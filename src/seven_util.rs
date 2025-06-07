@@ -3,26 +3,21 @@
 use std::{path::PathBuf, process::Command, sync::OnceLock};
 
 use thiserror::Error;
-use winreg::{enums::HKEY_LOCAL_MACHINE, RegKey};
-
+// use winreg::{enums::HKEY_LOCAL_MACHINE, RegKey}; // Registry is no longer needed
 use crate::utils;
 
 static INST: OnceLock<SevenUtil> = OnceLock::new();
 
 #[derive(Error, Debug)]
 pub enum SevenError {
-    #[error("Failed to open 7-zip registry subkey. Make sure 7-zip is installed")]
-    RegOpenFailed(#[source] std::io::Error),
-    #[error("Failed to read 7-zip path value. Make sure 7-zip is installed")]
-    RegGetValueFailed(#[source] std::io::Error),
-    #[error("7z.exe not found at expected path: '{0}'. Make sure 7-zip is installed")]
-    SevenZipNotFound(String),
     #[error("7-zip failed to run using Command")]
     CommandError(#[source] std::io::Error),
     #[error("File '{file}' not found in archive '{archive}'")]
     FileNotFoundInArchive { file: String, archive: String },
     #[error("7-zip extraction failed: '{0}'")]
     ExtractionFailed(String),
+    #[error("Embedded 7z.exe extraction failed: {0}")]
+    EmbeddedExtractionFailed(String),
 }
 
 #[derive(Default)]
@@ -32,25 +27,23 @@ pub struct SevenUtil {
 
 impl SevenUtil {
     pub fn new() -> Result<Self, SevenError> {
-        let executable = Self::resolve_sevenz_path()?;
+        let executable = Self::extract_embedded_sevenz()?;
         Ok(Self { executable })
     }
 
-    fn resolve_sevenz_path() -> Result<PathBuf, SevenError> {
-        let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
-
-        let seven_zip = hklm
-            .open_subkey("SOFTWARE\\7-Zip")
-            .map_err(SevenError::RegOpenFailed)?;
-
-        let path: String = seven_zip
-            .get_value("Path")
-            .map_err(SevenError::RegGetValueFailed)?;
-
-        let exe_path: PathBuf = PathBuf::from(path).join("7z.exe");
-        if !exe_path.exists() || !exe_path.is_file() {
-            return Err(SevenError::SevenZipNotFound(exe_path.display().to_string()));
-        }
+    /// Extract the embedded 7z.exe to the temp directory and return its path
+    fn extract_embedded_sevenz() -> Result<PathBuf, SevenError> {
+        // 7z.exe is embedded via include_bytes!
+        const SEVENZ_BIN: &[u8] = include_bytes!("../bin/7z.exe");
+        let temp_dir = std::env::temp_dir().join("hdiff-apply");
+        std::fs::create_dir_all(&temp_dir).map_err(|e| {
+            SevenError::EmbeddedExtractionFailed(format!("Failed to create temp dir: {e}"))
+        })?;
+        let exe_path = temp_dir.join("7z.exe");
+        // Overwrite if already exists
+        std::fs::write(&exe_path, SEVENZ_BIN).map_err(|e| {
+            SevenError::EmbeddedExtractionFailed(format!("Failed to write 7z.exe: {e}"))
+        })?;
         Ok(exe_path)
     }
 
