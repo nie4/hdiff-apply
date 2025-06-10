@@ -12,8 +12,8 @@ pub struct BinaryVersion {
 impl BinaryVersion {
     pub fn parse(binary_version_path: &PathBuf) -> Result<Self, Error> {
         let mut file = File::open(binary_version_path)?;
-        let mut buf = [0; 266];
-        let n = file.read(&mut buf)?;
+        let mut buf = Vec::new();
+        let n = file.read_to_end(&mut buf)?;
 
         let content = String::from_utf8_lossy(&buf[..n]);
 

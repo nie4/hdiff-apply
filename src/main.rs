@@ -28,7 +28,7 @@ struct Args {
     #[arg()]
     game_path: Option<String>,
     #[arg(long)]
-    skip_version_check: bool, // TODO: impl this
+    skip_version_check: bool,
 }
 
 fn run() -> Result<(), Error> {
@@ -39,15 +39,14 @@ fn run() -> Result<(), Error> {
 
     let args = Args::parse();
 
+    if args.skip_version_check {
+        tracing::warn!("`--skip-version-check` is deprecated and has no effect. Make sure your archive remains unextracted")
+    }
+
     let temp_dir_path = utils::get_and_create_temp_dir()?;
     let hpatchz_path = utils::get_hpatchz()?;
     let game_path = utils::determine_game_path(args.game_path)?;
     let update_archives_paths = utils::get_update_archives(&game_path)?;
-
-    // Commented out because its not implemented yet
-    //if args.skip_version_check {
-    //    tracing::warn!("Bypassing version check. This may lead to issues.");
-    //}
 
     tracing::info!("Preparing for update...");
 
@@ -55,7 +54,7 @@ fn run() -> Result<(), Error> {
     let mut updates_big_vec: Vec<(BinaryVersion, PathBuf, PathBuf)> = vec![];
 
     // Prepare hdiffs by storing thier paths and versions
-    for update_archive in &update_archives_paths {
+    for update_archive_path in &update_archives_paths {
         let rnd_name: String = rand::rng()
             .sample_iter(&Alphanumeric)
             .take(5)
@@ -65,7 +64,7 @@ fn run() -> Result<(), Error> {
         let temp_path = temp_dir_path.join(format!("hdiff_{}", rnd_name));
 
         SevenUtil::inst().extract_specific_files_to(
-            &update_archive,
+            &update_archive_path,
             &[
                 "StarRail_Data\\StreamingAssets\\BinaryVersion.bytes",
                 "hdiffmap.json",
@@ -76,7 +75,7 @@ fn run() -> Result<(), Error> {
 
         let hdiff_version = BinaryVersion::parse(&temp_path.join("BinaryVersion.bytes"))?;
 
-        updates_big_vec.push((hdiff_version, temp_path, update_archive.to_path_buf()));
+        updates_big_vec.push((hdiff_version, temp_path, update_archive_path.to_path_buf()));
     }
     updates_big_vec.sort_by(|a, b| a.0.cmp(&b.0));
 
@@ -85,62 +84,40 @@ fn run() -> Result<(), Error> {
         &game_path.join("StarRail_Data\\StreamingAssets\\BinaryVersion.bytes"),
     )?;
 
-    let mut prev_version = &client_version;
     let mut start_index = None;
+    let mut sequence = String::new();
 
     for (i, (hdiff_version, _, _)) in updates_big_vec.iter().enumerate() {
         if start_index.is_none() {
-            if utils::verify_hdiff_version(prev_version, hdiff_version) {
-                start_index = Some(i);
-                prev_version = hdiff_version;
+            if !utils::verify_hdiff_version(&client_version, hdiff_version) {
+                continue;
             }
-        } else {
-            if !utils::verify_hdiff_version(prev_version, hdiff_version) {
-                return Err(Error::InvalidHdiffVersion(
-                    prev_version.to_string(),
-                    hdiff_version.to_string(),
-                ));
-            }
-            prev_version = hdiff_version;
+            start_index = Some(i);
+
+            sequence.push_str(&format!("{}", client_version.to_string()));
+            sequence.push_str(&format!(" → {}", hdiff_version.patch_version));
+
+            continue;
         }
+
+        sequence.push_str(&format!(" → {}", hdiff_version.patch_version));
     }
 
     if start_index.is_none() {
-        let first_hdiff = updates_big_vec
+        let last_hdiff = updates_big_vec
             .last()
             .map(|(v, _, _)| v.to_string())
             .unwrap_or_else(|| "unknown".to_string());
 
         return Err(Error::InvalidHdiffVersion(
             client_version.to_string(),
-            first_hdiff.to_string(),
+            last_hdiff,
         ));
     }
 
     // Everything is correct proceeding further
-    let mut sequence = String::new();
-    let mut found_start = false;
-    let mut prev_version = &client_version;
-
-    for (version, _, _) in updates_big_vec.iter() {
-        if !found_start {
-            if utils::verify_hdiff_version(prev_version, version) {
-                found_start = true;
-                sequence.push_str(&format!("{}", prev_version.to_string()));
-            } else {
-                continue;
-            }
-        }
-
-        sequence.push_str(&format!(" -> {}", version.patch_version));
-        prev_version = version;
-    }
-
     let update_choice = {
-        print!(
-            "Proceed with this update sequence: {} [Yes/No (default: Yes)]: ",
-            sequence
-        );
+        print!("Proceed with this update sequence: {} (Y/n): ", sequence);
         utils::wait_for_confirmation(true)
     };
 
@@ -148,23 +125,27 @@ fn run() -> Result<(), Error> {
 
     if update_choice {
         if let Some(index) = start_index {
-            for (_, temp_path, archive_path) in updates_big_vec.iter().skip(index) {
-                
+            for (_, temp_path, update_archive_path) in updates_big_vec.iter().skip(index) {
                 let hdiffmap_path = temp_path.join("hdiffmap.json");
                 let deletefiles_path = temp_path.join("deletefiles.txt");
-                
-                let verifier = Verifier::new(game_path.as_path(), &hdiffmap_path);
-                if !verifier.by_file_size()? {
-                    tracing::error!("Size mismatch"); // TODO: return error with message
-                }
 
-                run_updater(
-                    &game_path,
-                    &hpatchz_path,
-                    archive_path,
-                    &hdiffmap_path,
-                    &deletefiles_path,
-                )?;
+                tracing::info!("Verifying base client integrity...");
+
+                let verify_client = Verifier::new(game_path.as_path(), &hdiffmap_path);
+                verify_client.by_file_size()?;
+                verify_client.by_md5()?;
+
+                tracing::info!("Base client integrity verified. Proceeding with update...");
+
+                let archive_name = update_archive_path
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("hdiff");
+
+                tracing::info!("Extracting {}", archive_name);
+                SevenUtil::inst().extract_hdiff_to(&update_archive_path, &game_path)?;
+
+                run_updater(&game_path, &hpatchz_path, &hdiffmap_path, &deletefiles_path)?;
             }
         }
     }
@@ -175,25 +156,18 @@ fn run() -> Result<(), Error> {
 }
 
 fn run_updater(
-    game_path: &PathBuf,
-    hpatchz_path: &PathBuf,
-    hdiff_archive: &PathBuf,
+    game_path: &Path,
+    hpatchz_path: &Path,
     hdiffmap_path: &Path,
     deletefiles_path: &Path,
 ) -> Result<(), Error> {
-    let archive_str = &hdiff_archive.display().to_string();
-    let archive_name = archive_str.split('\\').last().unwrap_or("hdiff");
-
-    tracing::info!("Extracting {}", archive_name);
-    SevenUtil::inst().extract_hdiff_to(&hdiff_archive, &game_path)?;
-
-    let mut delete_files = DeleteFiles::new(&game_path);
-    if let Err(e) = delete_files.remove(deletefiles_path) {
+    let mut delete_files = DeleteFiles::new(&game_path, deletefiles_path);
+    if let Err(e) = delete_files.remove() {
         tracing::error!("{}", e);
     }
 
-    let mut hdiff_map = HDiffMap::new(&game_path, &hpatchz_path);
-    if let Err(e) = hdiff_map.patch(hdiffmap_path) {
+    let mut hdiff_map = HDiffMap::new(&game_path, &hpatchz_path, &hdiffmap_path);
+    if let Err(e) = hdiff_map.patch() {
         tracing::error!("{}", e);
     }
 

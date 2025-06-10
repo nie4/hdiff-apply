@@ -11,9 +11,10 @@ use std::{
 };
 use thiserror::Error;
 
-pub struct HDiffMap<'a, 'b> {
+pub struct HDiffMap<'a> {
     game_path: &'a Path,
-    hpatchz_path: &'b Path,
+    hpatchz_path: &'a Path,
+    hdiffmap_path: &'a Path,
     count: Arc<Mutex<u32>>,
 }
 
@@ -34,16 +35,19 @@ struct DiffMap {
     patch_file_name: String,
 }
 
-impl<'a, 'b> HDiffMap<'a, 'b> {
-    pub fn new(game_path: &'a Path, hpatchz_path: &'b Path) -> Self {
+impl<'a> HDiffMap<'a> {
+    pub fn new(game_path: &'a Path, hpatchz_path: &'a Path, hdiffmap_path: &'a Path) -> Self {
         Self {
             game_path,
             hpatchz_path,
+            hdiffmap_path,
             count: Arc::new(Mutex::new(0)),
         }
     }
 
-    fn load_diff_map(&self, hdiffmap_path: &Path) -> Result<Vec<DiffMap>, PatchError> {
+    fn load_diff_map(&self) -> Result<Vec<DiffMap>, PatchError> {
+        let hdiffmap_path = self.hdiffmap_path;
+
         if !hdiffmap_path.exists() {
             return Err(PatchError::NotFound(format!("{}", hdiffmap_path.display())));
         }
@@ -63,17 +67,17 @@ impl<'a, 'b> HDiffMap<'a, 'b> {
         }
     }
 
-    pub fn patch(&mut self, hdiffmap_path: &Path) -> Result<(), PatchError> {
-        let path = self.game_path;
+    pub fn patch(&mut self) -> Result<(), PatchError> {
+        let game_path = self.game_path;
         let hpatchz_path = self.hpatchz_path;
 
-        let diff_map = self.load_diff_map(hdiffmap_path)?;
+        let diff_map = self.load_diff_map()?;
         let counter = AtomicU32::new(0);
 
         diff_map.into_par_iter().for_each(|entry| {
-            let source_file_name = path.join(&entry.source_file_name);
-            let patch_file_name = path.join(&entry.patch_file_name);
-            let target_file_name = path.join(&entry.target_file_name);
+            let source_file_name = game_path.join(&entry.source_file_name);
+            let patch_file_name = game_path.join(&entry.patch_file_name);
+            let target_file_name = game_path.join(&entry.target_file_name);
 
             let output = Command::new(&hpatchz_path)
                 .arg(&source_file_name)

@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use crate::{deletefiles, hdiffmap, seven_util};
+use crate::{deletefiles, hdiffmap, seven_util, verifier};
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -10,6 +10,8 @@ pub enum Error {
     PatchError(#[from] hdiffmap::PatchError),
     #[error[transparent]]
     SevenError(#[from] seven_util::SevenError),
+    #[error[transparent]]
+    VerifyError(#[from] verifier::VerifyError),
 
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),

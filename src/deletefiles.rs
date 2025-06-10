@@ -6,11 +6,6 @@ use std::{
 
 use thiserror::Error;
 
-pub struct DeleteFiles<'a> {
-    game_path: &'a Path,
-    count: u32,
-}
-
 #[derive(Debug, Error)]
 pub enum DeleteFileError {
     #[error("{0} doesn't exist, skipping")]
@@ -19,15 +14,24 @@ pub enum DeleteFileError {
     Io(#[from] std::io::Error),
 }
 
+pub struct DeleteFiles<'a> {
+    game_path: &'a Path,
+    deletefiles_path: &'a Path,
+    count: u32,
+}
+
 impl<'a> DeleteFiles<'a> {
-    pub fn new(game_path: &'a Path) -> Self {
+    pub fn new(game_path: &'a Path, deletefiles_path: &'a Path) -> Self {
         Self {
             game_path,
+            deletefiles_path,
             count: 0,
         }
     }
 
-    pub fn remove(&mut self, deletefiles_path: &Path) -> Result<(), DeleteFileError> {
+    pub fn remove(&mut self) -> Result<(), DeleteFileError> {
+        let deletefiles_path = self.deletefiles_path;
+
         if !deletefiles_path.exists() {
             return Err(DeleteFileError::NotFound(format!(
                 "{}",

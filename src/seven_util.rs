@@ -1,6 +1,6 @@
 // I didnt find any good 7z crates so this will have to do for now
 
-use std::{path::PathBuf, process::Command, sync::OnceLock};
+use std::{path::{Path, PathBuf}, process::Command, sync::OnceLock};
 
 use thiserror::Error;
 use crate::{utils, TEMP_DIR_NAME};
@@ -65,7 +65,7 @@ impl SevenUtil {
             .arg("e")
             .arg(archive)
             .args(files_in_archive)
-            .arg(format!("-o{}", dst.display().to_string()))
+            .arg(format!("-o{}", dst.display()))
             .arg("-aoa")
             .output()
             .map_err(SevenError::CommandError)?;
@@ -78,11 +78,11 @@ impl SevenUtil {
         Ok(())
     }
 
-    pub fn extract_hdiff_to(&self, archive: &PathBuf, dst: &PathBuf) -> Result<(), SevenError> {
+    pub fn extract_hdiff_to(&self, archive: &Path, dst: &Path) -> Result<(), SevenError> {
         let output = Command::new(&self.executable)
             .arg("x")
             .arg(archive)
-            .arg(format!("-o{}", dst.display().to_string()))
+            .arg(format!("-o{}", dst.display()))
             .arg("-aoa")
             .args(["-x!hdiffmap.json", "-x!deletefiles.txt"])
             .output()
