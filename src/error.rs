@@ -21,6 +21,6 @@ pub enum Error {
     ArchiveNotFound(),
     #[error("Failed to parse BinaryVersion.bytes: could not extract version string!")]
     VersionParse(),
-    #[error("Incompatible hdiff version: cannot update client from {0} to {1} if you believe this is a mistake use the --skip-version-check flag to override")]
+    #[error("Incompatible hdiff version: cannot update client from {0} to {1}")]
     InvalidHdiffVersion(String, String),
 }

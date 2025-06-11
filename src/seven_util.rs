@@ -48,7 +48,7 @@ impl SevenUtil {
         INST.get_or_init(|| match SevenUtil::new() {
             Ok(s) => s,
             Err(e) => {
-                tracing::error!("{}", e);
+                utils::print_err(&e.to_string());
                 utils::wait_for_input();
                 std::process::exit(0);
             }

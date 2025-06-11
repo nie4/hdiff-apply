@@ -16,6 +16,7 @@ use clap::Parser;
 use deletefiles::DeleteFiles;
 use hdiffmap::HDiffMap;
 use rand::{distr::Alphanumeric, Rng};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use seven_util::SevenUtil;
 use verifier::Verifier;
 
@@ -40,7 +41,7 @@ fn run() -> Result<(), Error> {
     let args = Args::parse();
 
     if args.skip_version_check {
-        tracing::warn!("`--skip-version-check` is deprecated and has no effect. Make sure your archive remains unextracted")
+        println!("- `--skip-version-check` is deprecated and has no effect. Make sure your archive remains unextracted")
     }
 
     let temp_dir_path = utils::get_and_create_temp_dir()?;
@@ -48,35 +49,41 @@ fn run() -> Result<(), Error> {
     let game_path = utils::determine_game_path(args.game_path)?;
     let update_archives_paths = utils::get_update_archives(&game_path)?;
 
-    tracing::info!("Preparing for update...");
+    println!("Preparing for update...");
 
     // <(hdiff_version, temp_path, archive_path)>
     let mut updates_big_vec: Vec<(BinaryVersion, PathBuf, PathBuf)> = vec![];
 
     // Prepare hdiffs by storing thier paths and versions
-    for update_archive_path in &update_archives_paths {
-        let rnd_name: String = rand::rng()
-            .sample_iter(&Alphanumeric)
-            .take(5)
-            .map(char::from)
-            .collect();
+    update_archives_paths
+        .into_par_iter()
+        .map(|update_archive_path| {
+            let rnd_name: String = rand::rng()
+                .sample_iter(&Alphanumeric)
+                .take(5)
+                .map(char::from)
+                .collect();
 
-        let temp_path = temp_dir_path.join(format!("hdiff_{}", rnd_name));
+            let temp_path = temp_dir_path.join(format!("hdiff_{}", rnd_name));
 
-        SevenUtil::inst().extract_specific_files_to(
-            &update_archive_path,
-            &[
-                "StarRail_Data\\StreamingAssets\\BinaryVersion.bytes",
-                "hdiffmap.json",
-                "deletefiles.txt",
-            ],
-            &temp_path,
-        )?;
+            SevenUtil::inst().extract_specific_files_to(
+                &update_archive_path,
+                &[
+                    "StarRail_Data\\StreamingAssets\\BinaryVersion.bytes",
+                    "hdiffmap.json",
+                    "deletefiles.txt",
+                ],
+                &temp_path,
+            )?;
 
-        let hdiff_version = BinaryVersion::parse(&temp_path.join("BinaryVersion.bytes"))?;
+            let hdiff_version = BinaryVersion::parse(&temp_path.join("BinaryVersion.bytes"))?;
 
-        updates_big_vec.push((hdiff_version, temp_path, update_archive_path.to_path_buf()));
-    }
+            Ok((hdiff_version, temp_path, update_archive_path.to_path_buf()))
+        })
+        .collect::<Result<Vec<_>, Error>>()?
+        .into_iter()
+        .for_each(|entry| updates_big_vec.push(entry));
+
     updates_big_vec.sort_by(|a, b| a.0.cmp(&b.0));
 
     // Do some checks to make sure client doesn't brick :)
@@ -100,6 +107,13 @@ fn run() -> Result<(), Error> {
             continue;
         }
 
+        if utils::verify_hdiff_version(&client_version, hdiff_version) {
+            return Err(Error::InvalidHdiffVersion(
+                client_version.to_string(),
+                hdiff_version.to_string(),
+            ));
+        }
+
         sequence.push_str(&format!(" → {}", hdiff_version.patch_version));
     }
 
@@ -121,36 +135,51 @@ fn run() -> Result<(), Error> {
         utils::wait_for_confirmation(true)
     };
 
+    let integrity_check_choice = if update_choice {
+        print!("Verify client integrity (Y/n): ");
+        utils::wait_for_confirmation(true)
+    } else {
+        false
+    };
+
     let now = Instant::now();
 
     if update_choice {
         if let Some(index) = start_index {
-            for (_, temp_path, update_archive_path) in updates_big_vec.iter().skip(index) {
+            let updates_len = updates_big_vec.len() - index;
+
+            for (i, (hdiff_version, temp_path, update_archive_path)) in
+                updates_big_vec.iter().skip(index).enumerate()
+            {
                 let hdiffmap_path = temp_path.join("hdiffmap.json");
                 let deletefiles_path = temp_path.join("deletefiles.txt");
 
-                tracing::info!("Verifying base client integrity...");
+                println!("\n-- Update {} of {}", i + 1, updates_len);
 
-                let verify_client = Verifier::new(game_path.as_path(), &hdiffmap_path);
-                verify_client.by_file_size()?;
-                verify_client.by_md5()?;
+                if integrity_check_choice {
+                    println!("Verifying client integrity");
 
-                tracing::info!("Base client integrity verified. Proceeding with update...");
+                    let verify_client = Verifier::new(game_path.as_path(), &hdiffmap_path);
+                    verify_client.by_file_size()?;
+                    verify_client.by_md5()?;
+                }
 
                 let archive_name = update_archive_path
                     .file_name()
                     .and_then(|s| s.to_str())
                     .unwrap_or("hdiff");
 
-                tracing::info!("Extracting {}", archive_name);
+                println!("Extracting {}", archive_name);
                 SevenUtil::inst().extract_hdiff_to(&update_archive_path, &game_path)?;
 
                 run_updater(&game_path, &hpatchz_path, &hdiffmap_path, &deletefiles_path)?;
+
+                println!("Updated to {}", hdiff_version.to_string())
             }
         }
     }
 
-    tracing::info!("Updated in {:.2?}", now.elapsed());
+    println!("\nFinished in {:.2?}", now.elapsed());
     utils::wait_for_input();
     Ok(())
 }
@@ -161,28 +190,15 @@ fn run_updater(
     hdiffmap_path: &Path,
     deletefiles_path: &Path,
 ) -> Result<(), Error> {
-    let mut delete_files = DeleteFiles::new(&game_path, deletefiles_path);
+    println!("Running updater");
+    let mut delete_files = DeleteFiles::new(&game_path, &deletefiles_path);
     if let Err(e) = delete_files.remove() {
-        tracing::error!("{}", e);
+        utils::print_err(&e.to_string());
     }
 
     let mut hdiff_map = HDiffMap::new(&game_path, &hpatchz_path, &hdiffmap_path);
     if let Err(e) = hdiff_map.patch() {
-        tracing::error!("{}", e);
-    }
-
-    if delete_files.count() > 0 {
-        tracing::info!(
-            "Deleted {} files listed in deletefiles.txt",
-            delete_files.count()
-        )
-    }
-
-    if hdiff_map.count() > 0 {
-        tracing::info!(
-            "Patched {} files listed in hdiffmap.json",
-            hdiff_map.count()
-        )
+        utils::print_err(&e.to_string());
     }
 
     Ok(())
@@ -190,7 +206,7 @@ fn run_updater(
 
 fn main() {
     if let Err(e) = run() {
-        tracing::error!("{}", e);
+        utils::print_err(&e.to_string());
         utils::wait_for_input()
     }
 }

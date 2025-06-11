@@ -2,20 +2,19 @@ use rayon::prelude::*;
 use serde::Deserialize;
 use serde_json::Value;
 use std::{
+    fs::remove_file,
     path::Path,
     process::Command,
-    sync::{
-        atomic::{AtomicU32, Ordering},
-        Arc, Mutex,
-    },
+    sync::atomic::{AtomicU32, Ordering},
 };
 use thiserror::Error;
+
+use crate::utils;
 
 pub struct HDiffMap<'a> {
     game_path: &'a Path,
     hpatchz_path: &'a Path,
     hdiffmap_path: &'a Path,
-    count: Arc<Mutex<u32>>,
 }
 
 #[derive(Debug, Error)]
@@ -41,7 +40,6 @@ impl<'a> HDiffMap<'a> {
             game_path,
             hpatchz_path,
             hdiffmap_path,
-            count: Arc::new(Mutex::new(0)),
         }
     }
 
@@ -58,13 +56,6 @@ impl<'a> HDiffMap<'a> {
         let diff_map = deserialized.get("diff_map").ok_or(PatchError::Json())?;
 
         Ok(serde_json::from_value(diff_map.clone()).unwrap())
-    }
-
-    fn remove_file<P: AsRef<Path>>(&self, path: P) {
-        match std::fs::remove_file(&path) {
-            Ok(_) => tracing::info!("Removed old hdiff file: {}", path.as_ref().display()),
-            Err(e) => tracing::error!("Failed to remove {}: {}", path.as_ref().display(), e),
-        }
     }
 
     pub fn patch(&mut self) -> Result<(), PatchError> {
@@ -91,31 +82,22 @@ impl<'a> HDiffMap<'a> {
                     if out.status.success() {
                         counter.fetch_add(1, Ordering::Relaxed);
 
-                        if !out.stdout.is_empty() {
-                            tracing::info!("{}", String::from_utf8_lossy(&out.stdout).trim());
-                        }
-
-                        self.remove_file(patch_file_name);
+                        let _ = remove_file(patch_file_name);
                         if source_file_name != target_file_name {
-                            self.remove_file(source_file_name);
+                            let _ = remove_file(source_file_name);
                         }
                     } else {
                         if !out.stderr.is_empty() {
-                            tracing::error!("{}", String::from_utf8_lossy(&out.stderr).trim());
+                            utils::print_err(String::from_utf8_lossy(&out.stderr).trim());
                         }
                     }
                 }
                 Err(e) => {
-                    tracing::error!("Failed to execute patch command: {}", e);
+                    utils::print_err(&format!("Failed to execute patch command: {}", e));
                 }
             }
         });
 
-        *self.count.lock().unwrap() = counter.load(Ordering::Relaxed);
         Ok(())
-    }
-
-    pub fn count(&self) -> u32 {
-        *self.count.lock().unwrap()
     }
 }

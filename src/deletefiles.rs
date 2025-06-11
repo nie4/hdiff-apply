@@ -1,23 +1,24 @@
 use std::{
     fs::{remove_file, File},
-    io::{BufRead, BufReader},
+    io::{self, BufRead, BufReader},
     path::Path,
 };
 
 use thiserror::Error;
+
+use crate::utils;
 
 #[derive(Debug, Error)]
 pub enum DeleteFileError {
     #[error("{0} doesn't exist, skipping")]
     NotFound(String),
     #[error("IO error: {0}")]
-    Io(#[from] std::io::Error),
+    Io(#[from] io::Error),
 }
 
 pub struct DeleteFiles<'a> {
     game_path: &'a Path,
     deletefiles_path: &'a Path,
-    count: u32,
 }
 
 impl<'a> DeleteFiles<'a> {
@@ -25,7 +26,6 @@ impl<'a> DeleteFiles<'a> {
         Self {
             game_path,
             deletefiles_path,
-            count: 0,
         }
     }
 
@@ -48,19 +48,15 @@ impl<'a> DeleteFiles<'a> {
             let path = Path::new(&line);
             let full_path = &self.game_path.join(path);
 
-            match remove_file(&full_path) {
-                Ok(_) => {
-                    tracing::info!("Deleted {}", full_path.display());
-                    self.count += 1;
-                }
-                Err(e) => tracing::error!("Failed to delete {}: {}", full_path.display(), e),
+            if let Err(e) = remove_file(&full_path) {
+                utils::print_err(&format!(
+                    "Failed to remove {}: {}",
+                    full_path.display().to_string(),
+                    e
+                ));
             }
         }
 
         Ok(())
-    }
-
-    pub fn count(&self) -> u32 {
-        self.count
     }
 }

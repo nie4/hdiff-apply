@@ -7,8 +7,6 @@ edition = "2021"
 serde = { version = "1.0.217", features = ["derive"] }
 serde_json = "1.0.134"
 thiserror = "2.0.9"
-tracing = "0.1.41"
-tracing-subscriber = "0.3"
 rayon = "1.10.0"
 ansi_term = "0.12"
 crossterm = "0.28.1"

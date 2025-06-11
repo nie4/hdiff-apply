@@ -5,6 +5,7 @@ use std::{
     path::PathBuf,
 };
 
+use ansi_term::Color;
 use crossterm::{terminal::SetTitle, QueueableCommand};
 
 use crate::{binary_version::BinaryVersion, Error, TEMP_DIR_NAME};
@@ -12,11 +13,6 @@ use crate::{binary_version::BinaryVersion, Error, TEMP_DIR_NAME};
 pub fn init_tracing() {
     #[cfg(target_os = "windows")]
     let _ = ansi_term::enable_ansi_support();
-
-    tracing_subscriber::fmt()
-        .without_time()
-        .with_max_level(tracing::Level::DEBUG)
-        .init();
 }
 
 pub fn wait_for_input() {
@@ -123,4 +119,8 @@ pub fn clean_temp_hdiff_data() -> Result<(), Error> {
     }
 
     Ok(())
+}
+
+pub fn print_err(message: &str) {
+    println!("[{}] {}", Color::Red.paint("ERROR"), message)
 }
