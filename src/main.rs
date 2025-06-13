@@ -1,7 +1,4 @@
-use std::{
-    path::{Path, PathBuf},
-    time::Instant,
-};
+use std::{path::Path, time::Instant};
 
 mod binary_version;
 mod deletefiles;
@@ -33,7 +30,8 @@ struct Args {
 }
 
 fn run() -> Result<(), Error> {
-    utils::init_tracing();
+    #[cfg(target_os = "windows")]
+    let _ = ansi_term::enable_ansi_support();
 
     utils::set_console_title()?;
     utils::clean_temp_hdiff_data()?;
@@ -52,10 +50,7 @@ fn run() -> Result<(), Error> {
     println!("Preparing for update...");
 
     // <(hdiff_version, temp_path, archive_path)>
-    let mut updates_big_vec: Vec<(BinaryVersion, PathBuf, PathBuf)> = vec![];
-
-    // Prepare hdiffs by storing thier paths and versions
-    update_archives_paths
+    let mut updates_big_vec: Vec<_> = update_archives_paths
         .into_par_iter()
         .map(|update_archive_path| {
             let rnd_name: String = rand::rng()
@@ -80,13 +75,10 @@ fn run() -> Result<(), Error> {
 
             Ok((hdiff_version, temp_path, update_archive_path.to_path_buf()))
         })
-        .collect::<Result<Vec<_>, Error>>()?
-        .into_iter()
-        .for_each(|entry| updates_big_vec.push(entry));
+        .collect::<Result<Vec<_>, Error>>()?;
 
     updates_big_vec.sort_by(|a, b| a.0.cmp(&b.0));
 
-    // Do some checks to make sure client doesn't brick :)
     let client_version = BinaryVersion::parse(
         &game_path.join("StarRail_Data\\StreamingAssets\\BinaryVersion.bytes"),
     )?;
@@ -129,7 +121,6 @@ fn run() -> Result<(), Error> {
         ));
     }
 
-    // Everything is correct proceeding further
     let update_choice = {
         print!("Proceed with this update sequence: {} (Y/n): ", sequence);
         utils::wait_for_confirmation(true)
@@ -191,6 +182,7 @@ fn run_updater(
     deletefiles_path: &Path,
 ) -> Result<(), Error> {
     println!("Running updater");
+
     let mut delete_files = DeleteFiles::new(&game_path, &deletefiles_path);
     if let Err(e) = delete_files.remove() {
         utils::print_err(&e.to_string());

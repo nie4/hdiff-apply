@@ -1,12 +1,7 @@
 use rayon::prelude::*;
 use serde::Deserialize;
 use serde_json::Value;
-use std::{
-    fs::remove_file,
-    path::Path,
-    process::Command,
-    sync::atomic::{AtomicU32, Ordering},
-};
+use std::{fs::remove_file, path::Path, process::Command};
 use thiserror::Error;
 
 use crate::utils;
@@ -63,7 +58,6 @@ impl<'a> HDiffMap<'a> {
         let hpatchz_path = self.hpatchz_path;
 
         let diff_map = self.load_diff_map()?;
-        let counter = AtomicU32::new(0);
 
         diff_map.into_par_iter().for_each(|entry| {
             let source_file_name = game_path.join(&entry.source_file_name);
@@ -80,8 +74,6 @@ impl<'a> HDiffMap<'a> {
             match output {
                 Ok(out) => {
                     if out.status.success() {
-                        counter.fetch_add(1, Ordering::Relaxed);
-
                         let _ = remove_file(patch_file_name);
                         if source_file_name != target_file_name {
                             let _ = remove_file(source_file_name);

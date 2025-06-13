@@ -10,11 +10,6 @@ use crossterm::{terminal::SetTitle, QueueableCommand};
 
 use crate::{binary_version::BinaryVersion, Error, TEMP_DIR_NAME};
 
-pub fn init_tracing() {
-    #[cfg(target_os = "windows")]
-    let _ = ansi_term::enable_ansi_support();
-}
-
 pub fn wait_for_input() {
     print!("Press enter to exit");
     stdout().flush().unwrap();
@@ -122,5 +117,5 @@ pub fn clean_temp_hdiff_data() -> Result<(), Error> {
 }
 
 pub fn print_err(message: &str) {
-    println!("[{}] {}", Color::Red.paint("ERROR"), message)
+    println!("{} {}", Color::Red.paint("error:"), message)
 }
