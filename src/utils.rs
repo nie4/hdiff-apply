@@ -1,6 +1,6 @@
 use std::{
     env::{current_dir, temp_dir},
-    fs::{create_dir, File},
+    fs::{create_dir, read_dir, remove_dir_all, File},
     io::{stdin, stdout, Write},
     path::PathBuf,
 };
@@ -103,17 +103,19 @@ pub fn set_console_title() -> Result<(), Error> {
     Ok(())
 }
 
-pub fn clean_temp_hdiff_data() -> Result<(), Error> {
+pub fn clean_temp_hdiff_data() {
     let temp_path = temp_dir().join(TEMP_DIR_NAME);
 
-    for entry in temp_path.read_dir()? {
-        let path = entry?.path();
-        if path.is_dir() {
-            std::fs::remove_dir_all(path)?
+    if let Ok(entries) = read_dir(temp_path) {
+        for entry in entries {
+            if let Ok(entry) = entry {
+                let path = entry.path();
+                if path.is_dir() {
+                    let _ = remove_dir_all(path);
+                }
+            }
         }
     }
-
-    Ok(())
 }
 
 pub fn print_err(message: &str) {

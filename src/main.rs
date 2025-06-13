@@ -34,7 +34,7 @@ fn run() -> Result<(), Error> {
     let _ = ansi_term::enable_ansi_support();
 
     utils::set_console_title()?;
-    utils::clean_temp_hdiff_data()?;
+    utils::clean_temp_hdiff_data();
 
     let args = Args::parse();
 
