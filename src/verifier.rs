@@ -1,11 +1,13 @@
 use std::{
-    fs::{read, read_to_string, File},
-    io::{Seek, SeekFrom},
+    fs::{read_to_string, File},
+    io::{Read, Seek, SeekFrom},
     path::Path,
+    sync::Arc,
 };
 
 use indicatif::{ProgressBar, ProgressStyle};
 use md5::{Digest, Md5};
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use serde::Deserialize;
 use serde_json::Value;
 use thiserror::Error;
@@ -29,7 +31,7 @@ pub enum VerifyError {
 }
 
 #[derive(Deserialize)]
-struct DiffMap {
+pub struct DiffMap {
     source_file_name: String,
     source_file_size: u64,
     source_file_md5: String,
@@ -57,6 +59,46 @@ impl<'a> Verifier<'a> {
         Ok(serde_json::from_value(diff_map.clone()).unwrap())
     }
 
+    pub fn verify_file(&self, entry: &DiffMap, pb: Arc<ProgressBar>) -> Result<(), VerifyError> {
+        let source_file_path = self.game_path.join(&entry.source_file_name);
+        let mut file = File::open(&source_file_path)?;
+        let file_size = file.seek(SeekFrom::End(0))?;
+
+        if file_size != entry.source_file_size {
+            return Err(VerifyError::FileSizeMismatchError {
+                expected: entry.source_file_size,
+                got: file_size,
+                file_name: source_file_path.display().to_string(),
+            });
+        }
+
+        file.seek(SeekFrom::Start(0))?;
+        let mut hasher = Md5::new();
+        let mut buffer = [0u8; 8192];
+
+        loop {
+            let bytes_read = file.read(&mut buffer)?;
+            if bytes_read == 0 {
+                break;
+            }
+            hasher.update(&buffer[..bytes_read]);
+        }
+
+        let md5_hash = format!("{:x}", hasher.finalize());
+        let expected_hash = &entry.source_file_md5;
+
+        if md5_hash != *expected_hash {
+            return Err(VerifyError::Md5MismatchError {
+                expected: expected_hash.to_string(),
+                got: md5_hash,
+                file_name: source_file_path.display().to_string(),
+            });
+        }
+
+        pb.inc(1);
+        Ok(())
+    }
+
     pub fn verify_all(&self) -> Result<(), VerifyError> {
         let hdiff_map = self.load_diff_map()?;
 
@@ -66,58 +108,15 @@ impl<'a> Verifier<'a> {
         .unwrap()
         .progress_chars("#>-");
 
-        let pb = ProgressBar::new(hdiff_map.len() as u64 * 2);
+        let pb = Arc::new(ProgressBar::new(hdiff_map.len() as u64));
         pb.set_style(spinner_style);
 
-        for diff_map in &hdiff_map {
-            let expected_size = diff_map.source_file_size;
-            let source_file_path = self.game_path.join(&diff_map.source_file_name);
-
-            let mut source_file = File::open(&source_file_path)?;
-            let source_file_size = source_file.seek(SeekFrom::End(0))?;
-
-            if source_file_size != expected_size {
-                return Err(VerifyError::FileSizeMismatchError {
-                    expected: expected_size,
-                    got: source_file_size,
-                    file_name: source_file_path.display().to_string(),
-                });
-            }
-
-            pb.inc(1);
-        }
-
         hdiff_map
-            .into_iter()
-            .map(|entry| {
-                let source_file_path = self.game_path.join(&entry.source_file_name);
-                let expected_md5 = &entry.source_file_md5;
-
-                let md5_hash = self.file_md5(&source_file_path)?;
-
-                if md5_hash != *expected_md5 {
-                    return Err(VerifyError::Md5MismatchError {
-                        expected: expected_md5.to_string(),
-                        got: md5_hash,
-                        file_name: source_file_path.display().to_string(),
-                    });
-                } else {
-                    pb.inc(1);
-                    Ok(())
-                }
-            })
-            .collect::<Result<Vec<()>, VerifyError>>()?;
+            .par_iter()
+            .try_for_each(|entry| self.verify_file(entry, pb.clone()))?;
 
         pb.finish();
 
         Ok(())
-    }
-
-    fn file_md5<P: AsRef<Path>>(&self, path: P) -> Result<String, VerifyError> {
-        let buffer = read(path)?;
-        let mut hasher = Md5::new();
-        hasher.update(buffer);
-        let result = hasher.finalize();
-        Ok(format!("{:x}", result))
     }
 }
