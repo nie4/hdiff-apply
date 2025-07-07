@@ -129,14 +129,6 @@ impl UpdateMgr {
 
             println!("\n-- Update {} of {}", i + 1, self.update_info.len());
 
-            if run_integrity_check {
-                println!("Verifying client integrity");
-
-                let verify_client = Verifier::new(&self.game_path, &hdiffmap_path);
-                verify_client.by_file_size()?;
-                verify_client.by_md5()?;
-            }
-
             let archive_name = update
                 .archive_path
                 .file_name()
@@ -145,6 +137,13 @@ impl UpdateMgr {
 
             println!("Extracting {}", archive_name);
             SevenUtil::inst()?.extract_hdiff_to(&update.archive_path, &self.game_path)?;
+
+            if run_integrity_check {
+                println!("Verifying client integrity");
+
+                let verify_client = Verifier::new(&self.game_path, &hdiffmap_path);
+                verify_client.verify_all()?;
+            }
 
             println!("Patching files");
 

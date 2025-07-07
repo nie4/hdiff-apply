@@ -4,6 +4,7 @@ use std::{
     path::Path,
 };
 
+use indicatif::{ProgressBar, ProgressStyle};
 use md5::{Digest, Md5};
 use serde::Deserialize;
 use serde_json::Value;
@@ -56,8 +57,17 @@ impl<'a> Verifier<'a> {
         Ok(serde_json::from_value(diff_map.clone()).unwrap())
     }
 
-    pub fn by_file_size(&self) -> Result<(), VerifyError> {
+    pub fn verify_all(&self) -> Result<(), VerifyError> {
         let hdiff_map = self.load_diff_map()?;
+
+        let spinner_style = ProgressStyle::with_template(
+            "{spinner:.green} [{elapsed}] [{bar:35.cyan/blue}] {pos}/{len}",
+        )
+        .unwrap()
+        .progress_chars("#>-");
+
+        let pb = ProgressBar::new(hdiff_map.len() as u64 * 2);
+        pb.set_style(spinner_style);
 
         for diff_map in &hdiff_map {
             let expected_size = diff_map.source_file_size;
@@ -73,13 +83,9 @@ impl<'a> Verifier<'a> {
                     file_name: source_file_path.display().to_string(),
                 });
             }
+
+            pb.inc(1);
         }
-
-        Ok(())
-    }
-
-    pub fn by_md5(&self) -> Result<(), VerifyError> {
-        let hdiff_map = self.load_diff_map()?;
 
         hdiff_map
             .into_iter()
@@ -96,10 +102,13 @@ impl<'a> Verifier<'a> {
                         file_name: source_file_path.display().to_string(),
                     });
                 } else {
+                    pb.inc(1);
                     Ok(())
                 }
             })
             .collect::<Result<Vec<()>, VerifyError>>()?;
+
+        pb.finish();
 
         Ok(())
     }

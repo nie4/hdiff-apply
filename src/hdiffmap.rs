@@ -1,5 +1,10 @@
-use std::{fs::{read_to_string, remove_file}, path::Path, process::Command};
+use std::{
+    fs::{read_to_string, remove_file},
+    path::Path,
+    process::Command,
+};
 
+use indicatif::{ProgressBar, ProgressStyle};
 use rayon::iter::IntoParallelIterator;
 use serde::Deserialize;
 use serde_json::Value;
@@ -60,6 +65,15 @@ impl<'a> HDiffMap<'a> {
 
         let diff_map = self.load_diff_map()?;
 
+        let spinner_style = ProgressStyle::with_template(
+            "{spinner:.green} [{elapsed}] [{bar:35.cyan/blue}] {pos}/{len}",
+        )
+        .unwrap()
+        .progress_chars("#>-");
+
+        let pb = ProgressBar::new(diff_map.len() as u64);
+        pb.set_style(spinner_style);
+
         diff_map.into_par_iter().for_each(|entry| {
             let source_file_name = game_path.join(&entry.source_file_name);
             let patch_file_name = game_path.join(&entry.patch_file_name);
@@ -79,6 +93,8 @@ impl<'a> HDiffMap<'a> {
                         if source_file_name != target_file_name {
                             let _ = remove_file(source_file_name);
                         }
+
+                        pb.inc(1);
                     } else {
                         if !out.stderr.is_empty() {
                             utils::print_err(String::from_utf8_lossy(&out.stderr).trim());
@@ -90,6 +106,7 @@ impl<'a> HDiffMap<'a> {
                 }
             }
         });
+        pb.finish();
 
         Ok(())
     }
