@@ -1,9 +1,15 @@
 // I didnt find any good 7z crates so this will have to do for now
 
-use std::{path::{Path, PathBuf}, process::Command, sync::OnceLock};
+use std::{
+    fs::{create_dir_all, write},
+    path::Path,
+    process::Command,
+    sync::OnceLock,
+};
 
 use thiserror::Error;
-use crate::{utils, TEMP_DIR_NAME};
+
+use crate::*;
 
 static INST: OnceLock<SevenUtil> = OnceLock::new();
 
@@ -33,26 +39,19 @@ impl SevenUtil {
         // 7z.exe is embedded via include_bytes!
         const SEVENZ_BIN: &[u8] = include_bytes!("../bin/7z.exe");
         let temp_dir = std::env::temp_dir().join(TEMP_DIR_NAME);
-        std::fs::create_dir_all(&temp_dir).map_err(|e| {
+        create_dir_all(&temp_dir).map_err(|e| {
             SevenError::EmbeddedExtractionFailed(format!("Failed to create temp dir: {e}"))
         })?;
         let exe_path = temp_dir.join("7z.exe");
         // Overwrite if already exists
-        std::fs::write(&exe_path, SEVENZ_BIN).map_err(|e| {
+        write(&exe_path, SEVENZ_BIN).map_err(|e| {
             SevenError::EmbeddedExtractionFailed(format!("Failed to write 7z.exe: {e}"))
         })?;
         Ok(exe_path)
     }
 
-    pub fn inst() -> &'static SevenUtil {
-        INST.get_or_init(|| match SevenUtil::new() {
-            Ok(s) => s,
-            Err(e) => {
-                utils::print_err(&e.to_string());
-                utils::wait_for_input();
-                std::process::exit(0);
-            }
-        })
+    pub fn inst() -> Result<&'static SevenUtil, SevenError> {
+        INST.get_or_try_init(|| SevenUtil::new().map_err(|err| err))
     }
 
     pub fn extract_specific_files_to(

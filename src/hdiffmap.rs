@@ -1,10 +1,11 @@
-use rayon::prelude::*;
+use std::{fs::{read_to_string, remove_file}, path::Path, process::Command};
+
+use rayon::iter::IntoParallelIterator;
 use serde::Deserialize;
 use serde_json::Value;
-use std::{fs::remove_file, path::Path, process::Command};
 use thiserror::Error;
 
-use crate::utils;
+use crate::*;
 
 pub struct HDiffMap<'a> {
     game_path: &'a Path,
@@ -18,7 +19,7 @@ pub enum PatchError {
     Json(),
     #[error("{0} doesn't exist, skipping")]
     NotFound(String),
-    #[error("IO error: {0}")]
+    #[error("{0}")]
     Io(#[from] std::io::Error),
 }
 
@@ -45,7 +46,7 @@ impl<'a> HDiffMap<'a> {
             return Err(PatchError::NotFound(format!("{}", hdiffmap_path.display())));
         }
 
-        let data = std::fs::read_to_string(&hdiffmap_path)?;
+        let data = read_to_string(&hdiffmap_path)?;
         let deserialized: Value = serde_json::from_str(&data).unwrap();
 
         let diff_map = deserialized.get("diff_map").ok_or(PatchError::Json())?;
@@ -85,7 +86,7 @@ impl<'a> HDiffMap<'a> {
                     }
                 }
                 Err(e) => {
-                    utils::print_err(&format!("Failed to execute patch command: {}", e));
+                    utils::print_err(format!("Failed to execute patch command: {}", e));
                 }
             }
         });

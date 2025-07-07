@@ -1,14 +1,13 @@
 use std::{
     env::{current_dir, temp_dir},
     fs::{create_dir, read_dir, remove_dir_all, File},
-    io::{stdin, stdout, Write},
-    path::PathBuf,
+    io::{stdin, stdout}
 };
 
 use ansi_term::Color;
 use crossterm::{terminal::SetTitle, QueueableCommand};
 
-use crate::{binary_version::BinaryVersion, Error, TEMP_DIR_NAME};
+use crate::*;
 
 pub fn wait_for_input() {
     print!("Press enter to exit");
@@ -28,7 +27,7 @@ pub fn get_hpatchz() -> Result<PathBuf, Error> {
     Ok(temp_path)
 }
 
-pub fn determine_game_path(game_path: Option<String>) -> Result<PathBuf, Error> {
+pub fn determine_game_path(game_path: &Option<String>) -> Result<PathBuf, Error> {
     match game_path {
         Some(path) => Ok(PathBuf::from(path)),
         None => {
@@ -38,7 +37,7 @@ pub fn determine_game_path(game_path: Option<String>) -> Result<PathBuf, Error> 
             if sr_exe.is_file() {
                 Ok(cwd)
             } else {
-                Err(Error::PathNotFound(cwd.display().to_string()))
+                Err(Error::GameNotFound(cwd.display().to_string()))
             }
         }
     }
@@ -88,19 +87,20 @@ pub fn get_and_create_temp_dir() -> Result<PathBuf, Error> {
     Ok(path)
 }
 
-pub fn verify_hdiff_version(client_version: &BinaryVersion, hdiff_version: &BinaryVersion) -> bool {
-    client_version.major_version == hdiff_version.major_version
-        && client_version.minor_version == hdiff_version.minor_version
-        && hdiff_version.patch_version == client_version.patch_version + 1
+pub fn verify_version(first_version: &BinaryVersion, next_version: &BinaryVersion) -> bool {
+    first_version.major_version == next_version.major_version
+        && first_version.minor_version == next_version.minor_version
+        && next_version.patch_version == first_version.patch_version + 1
 }
 
-pub fn set_console_title() -> Result<(), Error> {
-    stdout().queue(SetTitle(format!(
-        "{} v{} | Made by nie",
-        env!("CARGO_PKG_NAME"),
-        env!("CARGO_PKG_VERSION")
-    )))?;
-    Ok(())
+pub fn set_console_title() {
+    stdout()
+        .queue(SetTitle(format!(
+            "{} v{} | Made by nie",
+            env!("CARGO_PKG_NAME"),
+            env!("CARGO_PKG_VERSION")
+        )))
+        .unwrap();
 }
 
 pub fn clean_temp_hdiff_data() {
@@ -118,6 +118,6 @@ pub fn clean_temp_hdiff_data() {
     }
 }
 
-pub fn print_err(message: &str) {
-    println!("{} {}", Color::Red.paint("error:"), message)
+pub fn print_err<E: std::fmt::Display + std::fmt::Debug>(err: E) {
+    eprintln!("{} {}", Color::Red.paint("error:"), err)
 }

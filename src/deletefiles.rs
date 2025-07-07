@@ -1,18 +1,18 @@
 use std::{
     fs::{remove_file, File},
-    io::{self, BufRead, BufReader},
+    io::{BufRead, BufReader},
     path::Path,
 };
 
 use thiserror::Error;
 
-use crate::utils;
+use crate::*;
 
 #[derive(Debug, Error)]
 pub enum DeleteFileError {
     #[error("{0} doesn't exist, skipping")]
     NotFound(String),
-    #[error("IO error: {0}")]
+    #[error("{0}")]
     Io(#[from] io::Error),
 }
 
@@ -49,7 +49,7 @@ impl<'a> DeleteFiles<'a> {
             let full_path = &self.game_path.join(path);
 
             if let Err(e) = remove_file(&full_path) {
-                utils::print_err(&format!(
+                utils::print_err(format!(
                     "Failed to remove {}: {}",
                     full_path.display().to_string(),
                     e

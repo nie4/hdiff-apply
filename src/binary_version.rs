@@ -1,6 +1,6 @@
-use std::{fs::File, io::Read, path::PathBuf};
+use std::{fs::File, io::Read};
 
-use crate::Error;
+use crate::*;
 
 #[derive(Debug, Default, Eq, PartialEq, Ord, PartialOrd)]
 pub struct BinaryVersion {

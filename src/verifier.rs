@@ -1,5 +1,5 @@
 use std::{
-    fs::File,
+    fs::{read, read_to_string, File},
     io::{Seek, SeekFrom},
     path::Path,
 };
@@ -23,7 +23,7 @@ pub enum VerifyError {
         got: String,
         file_name: String,
     },
-    #[error("IO error: {0}")]
+    #[error("{0}")]
     Io(#[from] std::io::Error),
 }
 
@@ -48,7 +48,7 @@ impl<'a> Verifier<'a> {
     }
 
     fn load_diff_map(&self) -> Result<Vec<DiffMap>, VerifyError> {
-        let data = std::fs::read_to_string(&self.hdiff_map_path)?;
+        let data = read_to_string(&self.hdiff_map_path)?;
         let deserialized: Value = serde_json::from_str(&data).unwrap();
 
         let diff_map = deserialized.get("diff_map").unwrap();
@@ -105,7 +105,7 @@ impl<'a> Verifier<'a> {
     }
 
     fn file_md5<P: AsRef<Path>>(&self, path: P) -> Result<String, VerifyError> {
-        let buffer = std::fs::read(path)?;
+        let buffer = read(path)?;
         let mut hasher = Md5::new();
         hasher.update(buffer);
         let result = hasher.finalize();
