@@ -72,10 +72,6 @@ pub fn get_update_archives(game_path: &PathBuf) -> Result<Vec<PathBuf>, Error> {
         }
     }
 
-    if paths.is_empty() {
-        return Err(Error::ArchiveNotFound());
-    }
-
     Ok(paths)
 }
 
@@ -120,4 +116,8 @@ pub fn clean_temp_hdiff_data() {
 
 pub fn print_err<E: std::fmt::Display + std::fmt::Debug>(err: E) {
     eprintln!("{} {}", Color::Red.paint("error:"), err)
+}
+
+pub fn print_warn<E: std::fmt::Display + std::fmt::Debug>(err: E) {
+    eprintln!("{} {}", Color::Yellow.paint("warn:"), err)
 }

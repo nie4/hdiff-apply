@@ -72,7 +72,7 @@ fn run() -> Result<(), Error> {
 
     if update_choice {
         let now = Instant::now();
-        update_mgr.run_updater(integrity_check_choice)?;
+        update_mgr.update(integrity_check_choice)?;
         println!("\nFinished in {:.2?}", now.elapsed());
     }
 
