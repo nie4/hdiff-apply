@@ -12,6 +12,8 @@ use serde::Deserialize;
 use serde_json::Value;
 use thiserror::Error;
 
+use crate::error::IOError;
+
 #[derive(Error, Debug)]
 pub enum VerifyError {
     #[error("File size mismatch expected `{expected}` bytes got `{got} bytes in `{file_name}`. Client might be corrupted or used incompatible hdiff")]
@@ -27,7 +29,7 @@ pub enum VerifyError {
         file_name: String,
     },
     #[error("{0}")]
-    Io(#[from] std::io::Error),
+    Io(#[from] IOError),
 }
 
 #[derive(Deserialize)]
@@ -51,7 +53,8 @@ impl<'a> Verifier<'a> {
     }
 
     fn load_diff_map(&self) -> Result<Vec<DiffMap>, VerifyError> {
-        let data = read_to_string(&self.hdiff_map_path)?;
+        let data = read_to_string(&self.hdiff_map_path)
+            .map_err(|e| IOError::read_to_string(self.hdiff_map_path, e))?;
         let deserialized: Value = serde_json::from_str(&data).unwrap();
 
         let diff_map = deserialized.get("diff_map").unwrap();
@@ -61,8 +64,11 @@ impl<'a> Verifier<'a> {
 
     pub fn verify_file(&self, entry: &DiffMap, pb: Arc<ProgressBar>) -> Result<(), VerifyError> {
         let source_file_path = self.game_path.join(&entry.source_file_name);
-        let mut file = File::open(&source_file_path)?;
-        let file_size = file.seek(SeekFrom::End(0))?;
+        let mut file =
+            File::open(&source_file_path).map_err(|e| IOError::open(&source_file_path, e))?;
+        let file_size = file
+            .seek(SeekFrom::End(0))
+            .map_err(|e| IOError::seek(&source_file_path, e))?;
 
         if file_size != entry.source_file_size {
             return Err(VerifyError::FileSizeMismatchError {
@@ -72,12 +78,15 @@ impl<'a> Verifier<'a> {
             });
         }
 
-        file.seek(SeekFrom::Start(0))?;
+        file.seek(SeekFrom::Start(0))
+            .map_err(|e| IOError::seek(&source_file_path, e))?;
         let mut hasher = Md5::new();
         let mut buffer = [0u8; 8192];
 
         loop {
-            let bytes_read = file.read(&mut buffer)?;
+            let bytes_read = file
+                .read(&mut buffer)
+                .map_err(|e| IOError::read_buffer(&source_file_path, e))?;
             if bytes_read == 0 {
                 break;
             }

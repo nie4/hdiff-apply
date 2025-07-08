@@ -1,13 +1,13 @@
 use std::{
     env::{current_dir, temp_dir},
     fs::{create_dir, read_dir, remove_dir_all, File},
-    io::{stdin, stdout}
+    io::{stdin, stdout},
 };
 
 use ansi_term::Color;
 use crossterm::{terminal::SetTitle, QueueableCommand};
 
-use crate::*;
+use crate::{error::IOError, *};
 
 pub fn wait_for_input() {
     print!("Press enter to exit");
@@ -21,8 +21,9 @@ pub fn get_hpatchz() -> Result<PathBuf, Error> {
 
     const HPATCHZ_BIN: &[u8] = include_bytes!("../bin/hpatchz.exe");
 
-    let mut file = File::create(&temp_path)?;
-    file.write_all(HPATCHZ_BIN)?;
+    let mut file = File::create(&temp_path).map_err(|e| IOError::create_file(&temp_path, e))?;
+    file.write_all(HPATCHZ_BIN)
+        .map_err(|e| IOError::write_all(&temp_path, e))?;
 
     Ok(temp_path)
 }
@@ -31,7 +32,7 @@ pub fn determine_game_path(game_path: &Option<String>) -> Result<PathBuf, Error>
     match game_path {
         Some(path) => Ok(PathBuf::from(path)),
         None => {
-            let cwd = current_dir()?;
+            let cwd = current_dir().map_err(|e| IOError::current_dir(e))?;
             let sr_exe = cwd.join("StarRail.exe");
 
             if sr_exe.is_file() {
@@ -58,8 +59,13 @@ pub fn wait_for_confirmation(default_choice: bool) -> bool {
 
 pub fn get_update_archives(game_path: &PathBuf) -> Result<Vec<PathBuf>, Error> {
     let mut paths = Vec::new();
-    for entry in game_path.read_dir()? {
-        let path = entry?.path();
+    for entry in game_path
+        .read_dir()
+        .map_err(|e| IOError::read_dir(game_path, e))?
+    {
+        let path = entry
+            .map_err(|e| IOError::read_dir_entry(game_path, e))?
+            .path();
 
         if let Some(ext) = path.extension() {
             if ext.eq_ignore_ascii_case("7z")
@@ -78,7 +84,7 @@ pub fn get_update_archives(game_path: &PathBuf) -> Result<Vec<PathBuf>, Error> {
 pub fn get_and_create_temp_dir() -> Result<PathBuf, Error> {
     let path = temp_dir().join(TEMP_DIR_NAME);
     if !path.exists() {
-        create_dir(&path)?;
+        create_dir(&path).map_err(|e| IOError::create_dir(&path, e))?;
     }
     Ok(path)
 }

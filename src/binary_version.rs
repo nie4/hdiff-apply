@@ -1,6 +1,6 @@
 use std::{fs::File, io::Read};
 
-use crate::*;
+use crate::{error::IOError, *};
 
 #[derive(Debug, Default, Eq, PartialEq, Ord, PartialOrd)]
 pub struct BinaryVersion {
@@ -11,9 +11,13 @@ pub struct BinaryVersion {
 
 impl BinaryVersion {
     pub fn parse(binary_version_path: &PathBuf) -> Result<Self, Error> {
-        let mut file = File::open(binary_version_path)?;
+        let mut file =
+            File::open(binary_version_path).map_err(|e| IOError::open(binary_version_path, e))?;
+
         let mut buf = Vec::new();
-        let n = file.read_to_end(&mut buf)?;
+        let n = file
+            .read_to_end(&mut buf)
+            .map_err(|e| IOError::read_to_end(binary_version_path, e))?;
 
         let content = String::from_utf8_lossy(&buf[..n]);
 

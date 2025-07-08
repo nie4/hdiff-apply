@@ -6,14 +6,14 @@ use std::{
 
 use thiserror::Error;
 
-use crate::*;
+use crate::{error::IOError, *};
 
 #[derive(Debug, Error)]
 pub enum DeleteFileError {
     #[error("{0} doesn't exist, skipping")]
     NotFound(String),
     #[error("{0}")]
-    Io(#[from] io::Error),
+    Io(#[from] IOError),
 }
 
 pub struct DeleteFiles<'a> {
@@ -39,11 +39,11 @@ impl<'a> DeleteFiles<'a> {
             )));
         }
 
-        let file = File::open(&deletefiles_path)?;
+        let file = File::open(&deletefiles_path).map_err(|e| IOError::open(deletefiles_path, e))?;
         let reader = BufReader::new(file);
 
         for line in reader.lines() {
-            let line = line?;
+            let line = line.map_err(|e| IOError::read_line(deletefiles_path, e))?;
 
             let path = Path::new(&line);
             let full_path = &self.game_path.join(path);

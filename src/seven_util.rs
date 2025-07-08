@@ -51,7 +51,7 @@ impl SevenUtil {
     }
 
     pub fn inst() -> Result<&'static SevenUtil, SevenError> {
-        INST.get_or_try_init(|| SevenUtil::new().map_err(|err| err))
+        INST.get_or_try_init(|| SevenUtil::new().map_err(|e| e))
     }
 
     pub fn extract_specific_files_to(

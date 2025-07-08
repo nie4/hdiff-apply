@@ -10,7 +10,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use thiserror::Error;
 
-use crate::*;
+use crate::{error::IOError, *};
 
 pub struct HDiffMap<'a> {
     game_path: &'a Path,
@@ -25,7 +25,7 @@ pub enum PatchError {
     #[error("{0} doesn't exist, skipping")]
     NotFound(String),
     #[error("{0}")]
-    Io(#[from] std::io::Error),
+    Io(#[from] IOError),
 }
 
 #[derive(Deserialize)]
@@ -51,7 +51,8 @@ impl<'a> HDiffMap<'a> {
             return Err(PatchError::NotFound(format!("{}", hdiffmap_path.display())));
         }
 
-        let data = read_to_string(&hdiffmap_path)?;
+        let data = read_to_string(&hdiffmap_path)
+            .map_err(|e| IOError::read_to_string(hdiffmap_path, e))?;
         let deserialized: Value = serde_json::from_str(&data).unwrap();
 
         let diff_map = deserialized.get("diff_map").ok_or(PatchError::Json())?;
