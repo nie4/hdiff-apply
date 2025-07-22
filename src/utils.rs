@@ -41,7 +41,12 @@ pub fn determine_game_path(game_path: Option<String>) -> Result<PathBuf, Error> 
     }
 }
 
-pub fn wait_for_confirmation(default_choice: bool) -> bool {
+pub fn confirm(message: &str, default_choice: bool) -> bool {
+    if default_choice {
+        print!("{message} (Y/n): ")
+    } else {
+        print!("{message} (y/N): ")
+    }
     stdout().flush().unwrap();
 
     let mut input = String::new();

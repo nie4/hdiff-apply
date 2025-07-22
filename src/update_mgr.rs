@@ -203,7 +203,7 @@ impl UpdateMgr {
         &self,
         update: &UpdateInfo,
         index: usize,
-        run_integrity_check: bool,
+        do_integrity_check: bool,
     ) -> Result<(), Error> {
         let (hdiffmap_path, deletefiles_path) = self.get_update_file_paths(update);
 
@@ -218,7 +218,7 @@ impl UpdateMgr {
         println!("Extracting {}", archive_name);
         SevenUtil::inst()?.extract_hdiff_to(&update.archive_path, &self.game_path)?;
 
-        if run_integrity_check {
+        if do_integrity_check {
             self.run_integrity_check(&hdiffmap_path)?;
         }
 
@@ -229,13 +229,13 @@ impl UpdateMgr {
         Ok(())
     }
 
-    pub fn update(&self, run_integrity_check: bool) -> Result<(), Error> {
+    pub fn update(&self, do_integrity_check: bool) -> Result<(), Error> {
         if self.legacy_mode {
-            self.start_legacy_updater(run_integrity_check)?;
+            self.start_legacy_updater(do_integrity_check)?;
         }
 
         for (i, update) in self.update_info.iter().enumerate() {
-            self.start_updater(update, i, run_integrity_check)?;
+            self.start_updater(update, i, do_integrity_check)?;
         }
 
         Ok(())

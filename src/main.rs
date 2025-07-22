@@ -42,24 +42,17 @@ fn run() -> Result<(), Error> {
     );
     update_mgr.prepare_update_info()?;
 
-    let update_choice = {
-        print!(
-            "Proceed with this update sequence: {} (Y/n): ",
-            update_mgr.show_update_sequence()
-        );
-        utils::wait_for_confirmation(true)
-    };
+    let update_message = format!(
+        "Proceed with this update sequence: {}",
+        update_mgr.show_update_sequence()
+    );
 
-    let integrity_check_choice = update_choice
-        .then(|| {
-            print!("Verify client integrity (Y/n): ");
-            utils::wait_for_confirmation(true)
-        })
-        .unwrap_or(false);
+    let do_update = utils::confirm(&update_message, true);
+    let do_integrity_check = do_update && utils::confirm("Verify client integrity", true);
 
-    if update_choice {
+    if do_update {
         let now = Instant::now();
-        update_mgr.update(integrity_check_choice)?;
+        update_mgr.update(do_integrity_check)?;
         println!("\nFinished in {:.2?}", now.elapsed());
     }
 
