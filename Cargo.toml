@@ -10,7 +10,6 @@ thiserror = "2.0.9"
 rayon = "1.10.0"
 ansi_term = "0.12"
 crossterm = "0.28.1"
-clap = { version = "4.5.39", features = ["derive"] }
 rand = "0.9.1"
 md-5 = "0.10.6"
 indicatif = "0.18.0"

@@ -1,10 +1,6 @@
 #![feature(once_cell_try)]
 
-use std::{
-    io::{self, Write},
-    path::PathBuf,
-    time::Instant,
-};
+use std::{io::Write, path::PathBuf, time::Instant};
 
 mod binary_version;
 mod deletefiles;
@@ -16,7 +12,6 @@ mod utils;
 mod verifier;
 
 use binary_version::BinaryVersion;
-use clap::Parser;
 use deletefiles::DeleteFiles;
 use hdiffmap::HDiffMap;
 use rand::{distr::Alphanumeric, Rng};
@@ -30,18 +25,10 @@ type Error = error::Error;
 
 pub const TEMP_DIR_NAME: &'static str = "hdiff-apply";
 
-#[derive(Parser, Debug)]
-struct Args {
-    #[arg()]
-    game_path: Option<String>,
-}
-
 fn run() -> Result<(), Error> {
     println!("Preparing for update...");
-    io::stdout().flush().unwrap();
 
-    let args = Args::parse();
-    let game_path = utils::determine_game_path(&args.game_path)?;
+    let game_path = utils::determine_game_path(std::env::args().nth(1))?;
 
     let client_version =
         BinaryVersion::parse(&game_path.join("StarRail_Data/StreamingAssets/BinaryVersion.bytes"))?;

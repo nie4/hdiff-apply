@@ -28,19 +28,16 @@ pub fn get_hpatchz() -> Result<PathBuf, Error> {
     Ok(temp_path)
 }
 
-pub fn determine_game_path(game_path: &Option<String>) -> Result<PathBuf, Error> {
-    match game_path {
-        Some(path) => Ok(PathBuf::from(path)),
-        None => {
-            let cwd = current_dir().map_err(|e| IOError::current_dir(e))?;
-            let sr_exe = cwd.join("StarRail.exe");
+pub fn determine_game_path(game_path: Option<String>) -> Result<PathBuf, Error> {
+    let path = match game_path {
+        Some(path) => PathBuf::from(path),
+        None => current_dir().map_err(|e| IOError::current_dir(e))?,
+    };
 
-            if sr_exe.is_file() {
-                Ok(cwd)
-            } else {
-                Err(Error::GameNotFound(cwd.display().to_string()))
-            }
-        }
+    if path.join("StarRail.exe").is_file() {
+        Ok(path)
+    } else {
+        Err(Error::GameNotFound(path.display().to_string()))
     }
 }
 
