@@ -1,42 +1,31 @@
+use std::fs;
 use std::{
-    fs::{read_to_string, File},
+    fs::File,
     io::{Read, Seek, SeekFrom},
     path::Path,
     sync::Arc,
 };
 
-use indicatif::{ProgressBar, ProgressStyle};
+use indicatif::ProgressBar;
 use md5::{Digest, Md5};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use serde::Deserialize;
-use serde_json::Value;
-use thiserror::Error;
 
-use crate::error::IOError;
-
-#[derive(Error, Debug)]
-pub enum VerifyError {
-    #[error("File size mismatch expected `{expected}` bytes got `{got} bytes in `{file_name}`. Client might be corrupted or used incompatible hdiff")]
-    FileSizeMismatchError {
-        expected: u64,
-        got: u64,
-        file_name: String,
-    },
-    #[error("MD5 mismatch expected `{expected}` got `{got}` in `{file_name}`. Client might be corrupted or used incompatible hdiff")]
-    Md5MismatchError {
-        expected: String,
-        got: String,
-        file_name: String,
-    },
-    #[error("{0}")]
-    Io(#[from] IOError),
-}
+use crate::{
+    error::{IOError, VerifyError},
+    utils::pb_helper::create_progress_bar,
+};
 
 #[derive(Deserialize)]
-pub struct DiffMap {
+struct DiffEntry {
     source_file_name: String,
     source_file_size: u64,
     source_file_md5: String,
+}
+
+#[derive(Deserialize)]
+struct HDiffMap {
+    diff_map: Vec<DiffEntry>,
 }
 
 pub struct Verifier<'a> {
@@ -52,17 +41,15 @@ impl<'a> Verifier<'a> {
         }
     }
 
-    fn load_diff_map(&self) -> Result<Vec<DiffMap>, VerifyError> {
-        let data = read_to_string(&self.hdiff_map_path)
+    fn load_diff_map(&self) -> Result<Vec<DiffEntry>, VerifyError> {
+        let data = fs::read_to_string(&self.hdiff_map_path)
             .map_err(|e| IOError::read_to_string(self.hdiff_map_path, e))?;
-        let deserialized: Value = serde_json::from_str(&data).unwrap();
+        let hdiff_map: HDiffMap = serde_json::from_str(&data).map_err(|_| VerifyError::Json())?;
 
-        let diff_map = deserialized.get("diff_map").unwrap();
-
-        Ok(serde_json::from_value(diff_map.clone()).unwrap())
+        Ok(hdiff_map.diff_map)
     }
 
-    pub fn verify_file(&self, entry: &DiffMap, pb: Arc<ProgressBar>) -> Result<(), VerifyError> {
+    fn verify_file(&self, entry: &DiffEntry, pb: Arc<ProgressBar>) -> Result<(), VerifyError> {
         let source_file_path = self.game_path.join(&entry.source_file_name);
         let mut file =
             File::open(&source_file_path).map_err(|e| IOError::open(&source_file_path, e))?;
@@ -111,14 +98,7 @@ impl<'a> Verifier<'a> {
     pub fn verify_all(&self) -> Result<(), VerifyError> {
         let hdiff_map = self.load_diff_map()?;
 
-        let spinner_style = ProgressStyle::with_template(
-            "{spinner:.green} [{elapsed}] [{bar:35.cyan/blue}] {pos}/{len}",
-        )
-        .unwrap()
-        .progress_chars("#>-");
-
-        let pb = Arc::new(ProgressBar::new(hdiff_map.len() as u64));
-        pb.set_style(spinner_style);
+        let pb = Arc::new(create_progress_bar(hdiff_map.len()));
 
         hdiff_map
             .par_iter()

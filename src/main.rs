@@ -1,50 +1,24 @@
 #![feature(once_cell_try)]
 
-use std::{io::Write, path::PathBuf, time::Instant};
+use std::time::Instant;
 
-mod binary_version;
-mod deletefiles;
+use crate::{error::AppError, update::manager::UpdateMgr};
+
 mod error;
-mod hdiffmap;
-mod seven_util;
-mod update_mgr;
+mod update;
 mod utils;
-mod verifier;
 
-use binary_version::BinaryVersion;
-use deletefiles::DeleteFiles;
-use hdiffmap::HDiffMap;
-use rand::{distr::Alphanumeric, Rng};
-use rayon::iter::ParallelIterator;
-use seven_util::SevenUtil;
-use verifier::Verifier;
+pub const TEMP_DIR_NAME: &str = "hdiff-apply";
 
-use crate::update_mgr::UpdateMgr;
-
-type Error = error::Error;
-
-pub const TEMP_DIR_NAME: &'static str = "hdiff-apply";
-
-fn run() -> Result<(), Error> {
-    println!("Preparing for update...");
-
+fn run() -> Result<(), AppError> {
     let game_path = utils::determine_game_path(std::env::args().nth(1))?;
 
-    let client_version =
-        BinaryVersion::parse(&game_path.join("StarRail_Data/StreamingAssets/BinaryVersion.bytes"))?;
-
-    let mut update_mgr = UpdateMgr::new(
-        utils::get_update_archives(&game_path)?,
-        utils::get_and_create_temp_dir()?,
-        client_version,
-        game_path,
-        utils::get_hpatchz()?,
-    );
+    let mut update_mgr = UpdateMgr::new(game_path)?;
     update_mgr.prepare_update_info()?;
 
     let update_message = format!(
         "Proceed with this update sequence: {}",
-        update_mgr.show_update_sequence()
+        update_mgr.update_sequence()
     );
 
     let do_update = utils::confirm(&update_message, true);
@@ -61,14 +35,12 @@ fn run() -> Result<(), Error> {
 }
 
 fn main() {
-    #[cfg(target_os = "windows")]
-    let _ = ansi_term::enable_ansi_support();
-
+    println!("Preparing for update...");
     utils::set_console_title();
     utils::clean_temp_hdiff_data();
-
-    if let Err(err) = run() {
-        utils::print_err(err);
+    
+    if let Err(e) = run() {
+        utils::print_err(e);
         utils::wait_for_input();
     }
 }

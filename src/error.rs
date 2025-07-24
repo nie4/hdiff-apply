@@ -2,18 +2,16 @@ use std::path::Path;
 
 use thiserror::Error;
 
-use crate::*;
-
 #[derive(Error, Debug)]
-pub enum Error {
+pub enum AppError {
     #[error[transparent]]
-    DeleteFileError(#[from] deletefiles::DeleteFileError),
+    DeleteFileError(#[from] DeleteFileError),
     #[error[transparent]]
-    PatchError(#[from] hdiffmap::PatchError),
+    PatchError(#[from] PatchError),
     #[error[transparent]]
-    SevenError(#[from] seven_util::SevenError),
+    SevenError(#[from] SevenZipError),
     #[error[transparent]]
-    VerifyError(#[from] verifier::VerifyError),
+    VerifyError(#[from] VerifyError),
 
     #[error("{0}")]
     Io(#[from] IOError),
@@ -21,10 +19,56 @@ pub enum Error {
     GameNotFound(String),
     #[error("Hdiff archive was not found in the client directory!")]
     ArchiveNotFound(),
-    #[error("Failed to parse BinaryVersion.bytes: could not extract version string!")]
-    VersionParse(),
     #[error("Incompatible hdiff version: cannot update client from {0} to {1}")]
     InvalidHdiffVersion(String, String),
+}
+
+#[derive(Debug, Error)]
+pub enum DeleteFileError {
+    #[error("{0} doesn't exist, skipping")]
+    NotFound(String),
+    #[error("{0}")]
+    Io(#[from] IOError),
+}
+
+#[derive(Debug, Error)]
+pub enum PatchError {
+    #[error("hdiffmap.json structure changed!")]
+    Json(),
+    #[error("{0} doesn't exist, skipping")]
+    NotFound(String),
+    #[error("{0}")]
+    Io(#[from] IOError),
+}
+
+#[derive(Error, Debug)]
+pub enum VerifyError {
+    #[error("File size mismatch expected `{expected}` bytes got `{got} bytes in `{file_name}`. Client might be corrupted or used incompatible hdiff")]
+    FileSizeMismatchError {
+        expected: u64,
+        got: u64,
+        file_name: String,
+    },
+    #[error("MD5 mismatch expected `{expected}` got `{got}` in `{file_name}`. Client might be corrupted or used incompatible hdiff")]
+    Md5MismatchError {
+        expected: String,
+        got: String,
+        file_name: String,
+    },
+    #[error("{0}")]
+    Io(#[from] IOError),
+    #[error("hdiffmap.json structure changed!")]
+    Json(),
+}
+
+#[derive(Error, Debug)]
+pub enum SevenZipError {
+    #[error("7-zip failed to run using Command")]
+    CommandError(#[source] std::io::Error),
+    #[error("7-zip extraction failed: '{0}'")]
+    ExtractionFailed(String),
+    #[error("Embedded 7z.exe extraction failed: {0}")]
+    EmbeddedExtractionFailed(String),
 }
 
 #[derive(Error, Debug)]

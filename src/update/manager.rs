@@ -1,11 +1,18 @@
-use rayon::iter::IntoParallelRefIterator;
+use std::path::{Path, PathBuf};
 
-use crate::verifier::VerifyError;
+use rand::{distr::Alphanumeric, Rng};
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
-use super::*;
+use super::{deletefiles::DeleteFiles, hdiff::HDiff, verifier::Verifier};
+
+use crate::{
+    error::VerifyError,
+    utils::{self, binary_version::BinaryVersion, seven_zip::SevenZip},
+    AppError,
+};
 
 pub struct UpdateInfo {
-    hdiff_version: BinaryVersion,
+    update_version: BinaryVersion,
     temp_path: PathBuf,
     archive_path: PathBuf,
 }
@@ -21,25 +28,28 @@ pub struct UpdateMgr {
 }
 
 impl UpdateMgr {
-    pub fn new(
-        update_archives_paths: Vec<PathBuf>,
-        temp_dir_path: PathBuf,
-        client_version: BinaryVersion,
-        game_path: PathBuf,
-        hpatchz_path: PathBuf,
-    ) -> Self {
-        Self {
+    pub fn new<T: AsRef<Path>>(game_path: T) -> Result<Self, AppError> {
+        let update_archives_paths = utils::get_update_archives(&game_path)?;
+        let temp_dir_path = utils::get_and_create_temp_dir()?;
+        let client_version = BinaryVersion::parse(
+            game_path
+                .as_ref()
+                .join("StarRail_Data/StreamingAssets/BinaryVersion.bytes"),
+        )?;
+        let hpatchz_path = utils::get_hpatchz()?;
+
+        Ok(Self {
             update_archives_paths,
             update_info: Vec::new(),
             temp_dir_path,
             client_version,
-            game_path,
+            game_path: game_path.as_ref().to_path_buf(),
             hpatchz_path,
             legacy_mode: false,
-        }
+        })
     }
 
-    pub fn detect_legacy_mode(&mut self) -> Result<bool, Error> {
+    pub fn detect_legacy_mode(&mut self) -> Result<bool, AppError> {
         if !self.update_archives_paths.is_empty() {
             return Ok(false);
         }
@@ -51,19 +61,19 @@ impl UpdateMgr {
 
         if is_legacy {
             self.legacy_mode = true;
-            utils::print_warn("Running in legacy mode!");
+            utils::print_info("Running in legacy mode!");
             Ok(true)
         } else {
-            Err(Error::ArchiveNotFound())
+            Err(AppError::ArchiveNotFound())
         }
     }
 
-    pub fn prepare_update_info(&mut self) -> Result<(), Error> {
+    pub fn prepare_update_info(&mut self) -> Result<(), AppError> {
         if self.detect_legacy_mode()? {
             return Ok(());
         }
 
-        let update_infos: Result<Vec<UpdateInfo>, Error> = self
+        let update_infos: Result<Vec<UpdateInfo>, AppError> = self
             .update_archives_paths
             .par_iter()
             .map(|update_archive| {
@@ -75,7 +85,7 @@ impl UpdateMgr {
 
                 let temp_path = self.temp_dir_path.join(format!("hdiff_{}", rnd_name));
 
-                SevenUtil::inst()?.extract_specific_files_to(
+                SevenZip::inst()?.extract_specific_files_to(
                     update_archive,
                     &[
                         "StarRail_Data\\StreamingAssets\\BinaryVersion.bytes",
@@ -88,7 +98,7 @@ impl UpdateMgr {
                 let hdiff_version = BinaryVersion::parse(&temp_path.join("BinaryVersion.bytes"))?;
 
                 Ok(UpdateInfo {
-                    hdiff_version,
+                    update_version: hdiff_version,
                     temp_path,
                     archive_path: update_archive.to_path_buf(),
                 })
@@ -101,17 +111,17 @@ impl UpdateMgr {
         Ok(())
     }
 
-    fn fix_update_sequence(&mut self) -> Result<(), Error> {
+    fn fix_update_sequence(&mut self) -> Result<(), AppError> {
         let mut cur_version = &self.client_version;
         let mut valid_start_idx = None;
         let mut valid_count = 0;
 
         for (i, update) in self.update_info.iter().enumerate() {
-            if utils::verify_version(cur_version, &update.hdiff_version) {
+            if utils::verify_version(cur_version, &update.update_version) {
                 if valid_start_idx.is_none() {
                     valid_start_idx = Some(i);
                 }
-                cur_version = &update.hdiff_version;
+                cur_version = &update.update_version;
                 valid_count += 1;
             } else if valid_start_idx.is_some() {
                 break;
@@ -122,9 +132,9 @@ impl UpdateMgr {
             let last = self
                 .update_info
                 .last()
-                .map(|update| update.hdiff_version.to_string())
+                .map(|update| update.update_version.to_string())
                 .unwrap_or_else(|| "unknown".to_string());
-            return Err(Error::InvalidHdiffVersion(
+            return Err(AppError::InvalidHdiffVersion(
                 self.client_version.to_string(),
                 last,
             ));
@@ -138,7 +148,7 @@ impl UpdateMgr {
         Ok(())
     }
 
-    pub fn show_update_sequence(&self) -> String {
+    pub fn update_sequence(&self) -> String {
         let mut sequence = String::with_capacity(34);
         if self.legacy_mode {
             sequence.push_str(&format!("update to {}", &self.client_version.to_string()));
@@ -147,7 +157,7 @@ impl UpdateMgr {
         }
 
         for update in &self.update_info {
-            sequence.push_str(&format!(" → {}", update.hdiff_version.patch_version));
+            sequence.push_str(&format!(" → {}", update.update_version.patch_version));
         }
 
         sequence
@@ -168,13 +178,13 @@ impl UpdateMgr {
     }
 
     fn run_patcher(&self, hdiffmap_path: &PathBuf, deletefiles_path: &PathBuf) {
-        let mut delete_files = DeleteFiles::new(&self.game_path, &deletefiles_path);
-        if let Err(err) = delete_files.remove() {
+        let delete_files = DeleteFiles::new(&self.game_path, &deletefiles_path);
+        if let Err(err) = delete_files.execute() {
             utils::print_err(err);
         }
 
-        let mut hdiff_map = HDiffMap::new(&self.game_path, &self.hpatchz_path, &hdiffmap_path);
-        if let Err(err) = hdiff_map.patch() {
+        let mut hdiff_map = HDiff::new(&self.game_path, &self.hpatchz_path, &hdiffmap_path);
+        if let Err(err) = hdiff_map.execute() {
             utils::print_err(err);
         }
     }
@@ -185,7 +195,7 @@ impl UpdateMgr {
         verify_client.verify_all()
     }
 
-    fn start_legacy_updater(&self, run_integrity_check: bool) -> Result<(), Error> {
+    fn start_legacy_updater(&self, run_integrity_check: bool) -> Result<(), AppError> {
         let (hdiffmap_path, deletefiles_path) = self.get_legacy_update_file_paths();
 
         if run_integrity_check {
@@ -204,7 +214,7 @@ impl UpdateMgr {
         update: &UpdateInfo,
         index: usize,
         do_integrity_check: bool,
-    ) -> Result<(), Error> {
+    ) -> Result<(), AppError> {
         let (hdiffmap_path, deletefiles_path) = self.get_update_file_paths(update);
 
         println!("\n-- Update {} of {}", index + 1, self.update_info.len());
@@ -216,7 +226,7 @@ impl UpdateMgr {
             .unwrap_or("hdiff");
 
         println!("Extracting {}", archive_name);
-        SevenUtil::inst()?.extract_hdiff_to(&update.archive_path, &self.game_path)?;
+        SevenZip::inst()?.extract_hdiff_to(&update.archive_path, &self.game_path)?;
 
         if do_integrity_check {
             self.run_integrity_check(&hdiffmap_path)?;
@@ -225,11 +235,11 @@ impl UpdateMgr {
         println!("Patching files");
         self.run_patcher(&hdiffmap_path, &deletefiles_path);
 
-        println!("Updated to {}", update.hdiff_version.to_string());
+        println!("Updated to {}", update.update_version.to_string());
         Ok(())
     }
 
-    pub fn update(&self, do_integrity_check: bool) -> Result<(), Error> {
+    pub fn update(&self, do_integrity_check: bool) -> Result<(), AppError> {
         if self.legacy_mode {
             self.start_legacy_updater(do_integrity_check)?;
         }
