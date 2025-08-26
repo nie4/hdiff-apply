@@ -1,6 +1,7 @@
 # hdiff-apply
 
 ## Features:
+- Support for HDiff/LDiff and custom made HDiff
 - Optional client integrity verification by file size and MD5
 - Hdiff version validation
 - Support for sequential updates
@@ -32,3 +33,4 @@ cargo build -r
 ## Credits:
 - [HDiffPatch](https://github.com/sisong/HDiffPatch) for the patching utility (`bin/hpatchz.exe`)
 - [7-Zip](https://7-zip.org/) for file archive utility (`bin/7z.exe`)
+- [SophonPatcher](https://github.com/WatchAndyTW/SophonPatcher/) for ldiff manifest proto
