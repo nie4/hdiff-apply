@@ -52,6 +52,8 @@ fn main() {
             ))
         )?;
 
+        utils::get_or_create_temp_dir()?;
+
         // Just to throw error early if any occurs
         HPatchZ::instance()?;
         SevenZip::instance()?;
