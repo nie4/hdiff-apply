@@ -446,7 +446,6 @@ impl UpdateMgr {
         let delete_files = DeleteFiles::new(&self.game_path, &deletefiles_path);
 
         let diff_entries = ldiff.create_diff_entries()?;
-        ldiff.create_hdiff_files()?;
 
         if do_integrity_check {
             println!("Verifying client integrity");
@@ -454,6 +453,7 @@ impl UpdateMgr {
         }
 
         println!("Patching files");
+        ldiff.create_hdiff_files()?;
         ldiff.patch(diff_entries)?;
 
         println!("Removing unused files");
@@ -491,7 +491,6 @@ impl UpdateMgr {
         let delete_files = DeleteFiles::new(&self.game_path, &deletefiles_path);
 
         let diff_entries = ldiff.create_diff_entries()?;
-        ldiff.create_hdiff_files()?;
 
         if do_integrity_check {
             println!("Verifying client integrity");
@@ -499,6 +498,7 @@ impl UpdateMgr {
         }
 
         println!("Patching files");
+        ldiff.create_hdiff_files()?;
         ldiff.patch(diff_entries)?;
 
         println!("Removing unused files");
