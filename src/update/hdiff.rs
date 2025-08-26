@@ -1,96 +1,115 @@
-use std::fs;
-use std::{path::Path, process::Command};
-
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
-use serde::Deserialize;
-
-use crate::{
-    error::{IOError, PatchError},
-    utils::{self, pb_helper::create_progress_bar},
+use std::{
+    fs,
+    path::{Path, PathBuf},
 };
 
-#[derive(Deserialize)]
-struct DiffEntry {
-    source_file_name: String,
-    target_file_name: String,
-    patch_file_name: String,
-}
+use anyhow::{Context, Result};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
-#[derive(Deserialize)]
-struct HDiffMap {
-    diff_map: Vec<DiffEntry>,
-}
+use crate::{types::CustomDiffMap, utils::pb_helper::create_progress_bar};
+use crate::{
+    types::{DiffEntry, HDiffMap},
+    utils::hpatchz::HPatchZ,
+};
 
-// Handle hdiffmap.json
 pub struct HDiff<'a> {
     game_path: &'a Path,
-    hpatchz_path: &'a Path,
     hdiffmap_path: &'a Path,
 }
 
 impl<'a> HDiff<'a> {
-    pub fn new(game_path: &'a Path, hpatchz_path: &'a Path, hdiffmap_path: &'a Path) -> Self {
+    pub fn new(game_path: &'a Path, hdiffmap_path: &'a Path) -> Self {
         Self {
             game_path,
-            hpatchz_path,
             hdiffmap_path,
         }
     }
 
-    fn load_diff_map(&self) -> Result<Vec<DiffEntry>, PatchError> {
+    pub fn load_diff_entries(&self) -> Result<Vec<DiffEntry>> {
         if !self.hdiffmap_path.exists() {
-            return Err(PatchError::NotFound(
-                self.hdiffmap_path.display().to_string(),
-            ));
+            anyhow::bail!("{} doesn't exist", self.hdiffmap_path.display());
         }
 
-        let data = fs::read_to_string(self.hdiffmap_path)
-            .map_err(|e| IOError::read_to_string(self.hdiffmap_path, e))?;
-        let hdiff_map: HDiffMap = serde_json::from_str(&data).map_err(|_| PatchError::Json())?;
+        let data = fs::read_to_string(self.hdiffmap_path).with_context(|| {
+            format!(
+                "Failed to read '{}' to string",
+                self.hdiffmap_path.display()
+            )
+        })?;
+
+        let hdiff_map: HDiffMap =
+            serde_json::from_str(&data).context("hdiffmap.json structure changed!")?;
 
         Ok(hdiff_map.diff_map)
     }
 
-    pub fn execute(&mut self) -> Result<(), PatchError> {
-        let diff_map = self.load_diff_map()?;
+    pub fn load_custom_map(&self) -> Result<Vec<CustomDiffMap>> {
+        if !self.hdiffmap_path.exists() {
+            anyhow::bail!("{} doesn't exist", self.hdiffmap_path.display());
+        }
 
-        let pb = create_progress_bar(diff_map.len());
+        let data = fs::read_to_string(self.hdiffmap_path).with_context(|| {
+            format!(
+                "Failed to read '{}' to string",
+                self.hdiffmap_path.display()
+            )
+        })?;
 
-        diff_map.into_par_iter().for_each(|entry| {
-            let source_file = self.game_path.join(&entry.source_file_name);
-            let patch_file = self.game_path.join(&entry.patch_file_name);
-            let target_file = self.game_path.join(&entry.target_file_name);
+        let custom_map: Result<Vec<CustomDiffMap>, _> = data
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .map(|line| serde_json::from_str::<CustomDiffMap>(line.trim()))
+            .collect();
 
-            let output = Command::new(self.hpatchz_path)
-                .args([
-                    source_file.as_os_str(),
-                    patch_file.as_os_str(),
-                    target_file.as_os_str(),
-                    "-f".as_ref(),
-                ])
-                .output();
+        custom_map.with_context(|| {
+            format!(
+                "Failed to parse JSON from '{}'",
+                self.hdiffmap_path.display()
+            )
+        })
+    }
 
-            match output {
-                Ok(out) => {
-                    if out.status.success() {
-                        let _ = fs::remove_file(patch_file);
+    pub fn patch(&mut self, diff_entries: &'a Vec<DiffEntry>) -> Result<()> {
+        let pb = create_progress_bar(diff_entries.len());
 
-                        if source_file != target_file {
-                            let _ = fs::remove_file(source_file);
-                        }
+        diff_entries
+            .into_par_iter()
+            .try_for_each(|entry| -> Result<()> {
+                let mut source_file = self.game_path.join(&entry.source_file_name);
+                let patch_file = self.game_path.join(&entry.patch_file_name);
+                let target_file = self.game_path.join(&entry.target_file_name);
 
-                        pb.inc(1);
-                    } else {
-                        if !out.stderr.is_empty() {
-                            utils::print_err(String::from_utf8_lossy(&out.stderr).trim());
-                        }
-                    }
+                if entry.source_file_name.is_empty() {
+                    source_file = PathBuf::new();
                 }
-                Err(e) => {
-                    utils::print_err(format!("Failed to execute patch command: {}", e));
-                }
-            }
-        });
+
+                HPatchZ::patch_file(source_file, patch_file, target_file)?;
+                pb.inc(1);
+
+                Ok(())
+            })?;
+
+        pb.finish();
+
+        Ok(())
+    }
+
+    pub fn patch_custom(&self, custom_entries: Vec<CustomDiffMap>) -> Result<()> {
+        let pb = create_progress_bar(custom_entries.len());
+
+        custom_entries
+            .into_par_iter()
+            .try_for_each(|entry| -> Result<()> {
+                let source_file = self.game_path.join(&entry.remote_name);
+                let patch_file = self.game_path.join(format!("{}.hdiff", &entry.remote_name));
+                let target_file = self.game_path.join(&entry.remote_name);
+
+                HPatchZ::patch_file(source_file, patch_file, target_file)?;
+                pb.inc(1);
+
+                Ok(())
+            })?;
+
         pb.finish();
 
         Ok(())

@@ -1,10 +1,9 @@
 use std::{fs::File, io::Read, path::Path};
 
+use anyhow::{Context, Result};
 use regex::Regex;
 
-use crate::{error::IOError, AppError};
-
-#[derive(Debug, Default, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Debug, Default, Eq, PartialEq, Ord, PartialOrd, Clone)]
 pub struct BinaryVersion {
     pub major_version: u32,
     pub minor_version: u32,
@@ -12,18 +11,21 @@ pub struct BinaryVersion {
 }
 
 impl BinaryVersion {
-    pub fn parse<T: AsRef<Path>>(binary_version_path: T) -> Result<Self, AppError> {
-        let mut file = File::open(&binary_version_path)
-            .map_err(|e| IOError::open(binary_version_path.as_ref(), e))?;
+    pub fn parse<T: AsRef<Path>>(binary_version_path: T) -> Result<Self> {
+        let mut file = File::open(&binary_version_path).with_context(|| {
+            format!(
+                "Failed to open '{}'",
+                binary_version_path.as_ref().display()
+            )
+        })?;
 
         let mut buf = Vec::new();
-        let n = file
-            .read_to_end(&mut buf)
-            .map_err(|e| IOError::read_to_end(binary_version_path.as_ref(), e))?;
+        let n = file.read_to_end(&mut buf)?;
 
         let content = String::from_utf8_lossy(&buf[..n]);
 
-        let re = Regex::new(r"(\d+)\.(\d+)\.(\d{1,2})").unwrap();
+        let re =
+            Regex::new(r"(\d+)\.(\d+)\.(\d{1,2})").context("BinaryVersion regex gave an error")?;
 
         if let Some(caps) = re.captures(&content) {
             Ok(Self {

@@ -1,16 +1,13 @@
-use std::fs;
 use std::{
-    fs::File,
+    fs::{self, File},
     io::{BufRead, BufReader},
     path::Path,
 };
 
-use crate::{
-    error::{DeleteFileError, IOError},
-    utils,
-};
+use anyhow::{Context, Result};
 
-// Handle deletefiles.txt
+use crate::utils;
+
 pub struct DeleteFiles<'a> {
     game_path: &'a Path,
     deletefiles_path: &'a Path,
@@ -24,20 +21,18 @@ impl<'a> DeleteFiles<'a> {
         }
     }
 
-    pub fn execute(&self) -> Result<(), DeleteFileError> {
+    pub fn remove(&self) -> Result<bool> {
         if !self.deletefiles_path.exists() {
-            return Err(DeleteFileError::NotFound(
-                self.deletefiles_path.display().to_string(),
-            ));
+            return Ok(false);
         }
 
         let file = File::open(&self.deletefiles_path)
-            .map_err(|e| IOError::open(self.deletefiles_path, e))?;
+            .with_context(|| format!("Failed to open '{}'", self.deletefiles_path.display()))?;
 
         let reader = BufReader::new(file);
 
         for line in reader.lines() {
-            let line = line.map_err(|e| IOError::read_line(self.deletefiles_path, e))?;
+            let line = line?;
             let line = line.trim();
 
             if line.is_empty() {
@@ -51,6 +46,6 @@ impl<'a> DeleteFiles<'a> {
             }
         }
 
-        Ok(())
+        Ok(true)
     }
 }

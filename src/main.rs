@@ -1,20 +1,23 @@
-#![feature(once_cell_try)]
+#![feature(once_cell_try, try_blocks)]
 
-use std::time::Instant;
+use std::{io, time::Instant};
 
-use crate::{error::AppError, update::manager::UpdateMgr};
+use anyhow::Result;
+use crossterm::{execute, terminal::SetTitle};
 
-mod error;
+use crate::{update::manager::UpdateMgr, utils::{hpatchz::HPatchZ, seven_zip::SevenZip}};
+
+mod types;
 mod update;
 mod utils;
 
 pub const TEMP_DIR_NAME: &str = "hdiff-apply";
 
-fn run() -> Result<(), AppError> {
+fn run() -> Result<()> {
     let game_path = utils::determine_game_path(std::env::args().nth(1))?;
 
     let mut update_mgr = UpdateMgr::new(game_path)?;
-    update_mgr.prepare_update_info()?;
+    update_mgr.prepare_updates()?;
 
     let update_message = format!(
         "Proceed with this update sequence: {}",
@@ -35,12 +38,31 @@ fn run() -> Result<(), AppError> {
 }
 
 fn main() {
-    println!("Preparing for update...");
-    utils::set_console_title();
     utils::clean_temp_hdiff_data();
-    
-    if let Err(e) = run() {
+
+    println!("Preparing update... this may take a few seconds");
+
+    let result: Result<()> = try {
+        execute!(
+            io::stdout(),
+            SetTitle(format!(
+                "{} v{} | Made by nie",
+                env!("CARGO_PKG_NAME"),
+                env!("CARGO_PKG_VERSION")
+            ))
+        )?;
+
+        // Just to throw error early if any occurs
+        HPatchZ::instance()?;
+        SevenZip::instance()?;
+
+        run()?
+    };
+
+    if let Err(e) = result {
         utils::print_err(e);
         utils::wait_for_input();
     }
+
+    utils::clean_temp_hdiff_data();
 }

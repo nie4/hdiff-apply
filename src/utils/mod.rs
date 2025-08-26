@@ -1,48 +1,37 @@
 use std::{
-    env::{current_dir, temp_dir},
-    fs::{create_dir, read_dir, remove_dir_all, File},
-    io::{stdin, stdout, Write},
+    env, fs,
+    io::{self, Write},
     path::{Path, PathBuf},
 };
 
+use anyhow::Result;
 use binary_version::BinaryVersion;
-use crossterm::{style::Stylize, terminal::SetTitle, QueueableCommand};
+use crossterm::style::Stylize;
 
-use crate::{error::IOError, AppError, TEMP_DIR_NAME};
+use crate::TEMP_DIR_NAME;
 
 pub mod binary_version;
+pub mod hpatchz;
 pub mod pb_helper;
 pub mod seven_zip;
 
 pub fn wait_for_input() {
     print!("Press enter to exit");
-    stdout().flush().unwrap();
+    io::stdout().flush().unwrap();
 
-    stdin().read_line(&mut String::new()).unwrap();
+    io::stdin().read_line(&mut String::new()).unwrap();
 }
 
-pub fn get_hpatchz() -> Result<PathBuf, AppError> {
-    let temp_path = temp_dir().join(TEMP_DIR_NAME).join("hpatchz.exe");
-
-    const HPATCHZ_BIN: &[u8] = include_bytes!("../../bin/hpatchz.exe");
-
-    let mut file = File::create(&temp_path).map_err(|e| IOError::create_file(&temp_path, e))?;
-    file.write_all(HPATCHZ_BIN)
-        .map_err(|e| IOError::write_all(&temp_path, e))?;
-
-    Ok(temp_path)
-}
-
-pub fn determine_game_path(game_path: Option<String>) -> Result<PathBuf, AppError> {
+pub fn determine_game_path(game_path: Option<String>) -> Result<PathBuf> {
     let path = match game_path {
         Some(path) => PathBuf::from(path),
-        None => current_dir().map_err(|e| IOError::current_dir(e))?,
+        None => env::current_dir()?,
     };
 
     if path.join("StarRail.exe").is_file() {
         Ok(path)
     } else {
-        Err(AppError::GameNotFound(path.display().to_string()))
+        anyhow::bail!("StarRail.exe not found in: {}\n\tTip: Pass the game path as the first argument if it's not in the current directory or move this .exe", path.display());
     }
 }
 
@@ -52,10 +41,10 @@ pub fn confirm(message: &str, default_choice: bool) -> bool {
     } else {
         print!("{message} (y/N): ")
     }
-    stdout().flush().unwrap();
+    io::stdout().flush().unwrap();
 
     let mut input = String::new();
-    stdin().read_line(&mut input).unwrap();
+    io::stdin().read_line(&mut input).unwrap();
 
     match input.trim().to_lowercase().as_str() {
         "y" | "yes" => return true,
@@ -64,16 +53,10 @@ pub fn confirm(message: &str, default_choice: bool) -> bool {
     }
 }
 
-pub fn get_update_archives<T: AsRef<Path>>(game_path: T) -> Result<Vec<PathBuf>, AppError> {
+pub fn get_update_archives<T: AsRef<Path>>(game_path: T) -> Result<Vec<PathBuf>> {
     let mut paths = Vec::new();
-    for entry in game_path
-        .as_ref()
-        .read_dir()
-        .map_err(|e| IOError::read_dir(game_path.as_ref(), e))?
-    {
-        let path = entry
-            .map_err(|e| IOError::read_dir_entry(game_path.as_ref(), e))?
-            .path();
+    for entry in game_path.as_ref().read_dir()? {
+        let path = entry?.path();
 
         if let Some(ext) = path.extension() {
             if ext.eq_ignore_ascii_case("7z")
@@ -89,10 +72,10 @@ pub fn get_update_archives<T: AsRef<Path>>(game_path: T) -> Result<Vec<PathBuf>,
     Ok(paths)
 }
 
-pub fn get_and_create_temp_dir() -> Result<PathBuf, AppError> {
-    let path = temp_dir().join(TEMP_DIR_NAME);
+pub fn get_or_create_temp_dir() -> Result<PathBuf> {
+    let path = env::temp_dir().join(TEMP_DIR_NAME);
     if !path.exists() {
-        create_dir(&path).map_err(|e| IOError::create_dir(&path, e))?;
+        fs::create_dir(&path)?;
     }
     Ok(path)
 }
@@ -103,25 +86,15 @@ pub fn verify_version(first_version: &BinaryVersion, next_version: &BinaryVersio
         && next_version.patch_version == first_version.patch_version + 1
 }
 
-pub fn set_console_title() {
-    stdout()
-        .queue(SetTitle(format!(
-            "{} v{} | Made by nie",
-            env!("CARGO_PKG_NAME"),
-            env!("CARGO_PKG_VERSION")
-        )))
-        .unwrap();
-}
-
 pub fn clean_temp_hdiff_data() {
-    let temp_path = temp_dir().join(TEMP_DIR_NAME);
+    let temp_path = env::temp_dir().join(TEMP_DIR_NAME);
 
-    if let Ok(entries) = read_dir(temp_path) {
+    if let Ok(entries) = fs::read_dir(temp_path) {
         for entry in entries {
             if let Ok(entry) = entry {
                 let path = entry.path();
                 if path.is_dir() {
-                    let _ = remove_dir_all(path);
+                    let _ = fs::remove_dir_all(path);
                 }
             }
         }
@@ -129,7 +102,7 @@ pub fn clean_temp_hdiff_data() {
 }
 
 pub fn print_err<T: std::fmt::Display + std::fmt::Debug>(msg: T) {
-    eprintln!("{} {}", "error:".red(), msg)
+    eprintln!("{} {:?}", "error:".red(), msg)
 }
 
 pub fn print_info<T: std::fmt::Display + std::fmt::Debug>(msg: T) {

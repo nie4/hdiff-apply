@@ -6,7 +6,6 @@ edition = "2021"
 [dependencies]
 serde = { version = "1.0.217", features = ["derive"] }
 serde_json = "1.0.134"
-thiserror = "2.0.9"
 rayon = "1.10.0"
 crossterm = "0.28.1"
 rand = "0.9.1"
@@ -16,6 +15,9 @@ regex = { version = "1.11.1", default-features = false, features = [
     "std",
     "unicode-perl",
 ] }
+ruzstd = { version = "0.8.1", git = "https://github.com/KillingSpark/zstd-rs" }
+anyhow = "1.0.99"
+prost = "0.14.1"
 
 [profile.release]
 strip = true
