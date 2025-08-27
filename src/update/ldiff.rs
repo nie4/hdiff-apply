@@ -150,7 +150,12 @@ impl<'a> LDiff<'a> {
                 let patch_file = self.game_path.join(&entry.patch_file_name);
                 let target_file = self.game_path.join(&entry.target_file_name);
 
-                HPatchZ::patch_file(source_file, patch_file, target_file)?;
+                let result = HPatchZ::patch_file(&source_file, &patch_file, &target_file)?;
+                if !result {
+                    pb.suspend(|| {
+                        println!("Failed to patch: {}", source_file.display());
+                    });
+                }
                 pb.inc(1);
 
                 Ok(())

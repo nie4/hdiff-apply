@@ -9,7 +9,7 @@ use std::{
 
 use anyhow::{Context, Result};
 
-use crate::{utils, TEMP_DIR_NAME};
+use crate::TEMP_DIR_NAME;
 
 static HPATCHZ_INSTANCE: OnceLock<HPatchZ> = OnceLock::new();
 
@@ -41,10 +41,14 @@ impl HPatchZ {
         Ok(temp_path)
     }
 
-    /// Patch file and log which file failed with hpatchz error message
+    /// Patch one file with the result if patch was successfull
     ///
     /// Only throw error when command fails to execute
-    pub fn patch_file<P: AsRef<Path>>(source_file: P, patch_file: P, target_file: P) -> Result<()> {
+    pub fn patch_file<P: AsRef<Path>>(
+        source_file: P,
+        patch_file: P,
+        target_file: P,
+    ) -> Result<bool> {
         let instance = Self::instance()?;
 
         if let Ok(output) = Command::new(&instance.executable)
@@ -61,9 +65,9 @@ impl HPatchZ {
                 if source_file.as_ref() != target_file.as_ref() {
                     let _ = fs::remove_file(&source_file);
                 }
+                return Ok(true);
             } else if !output.stderr.is_empty() {
-                println!("Failed to patch: {}", source_file.as_ref().display());
-                utils::print_err(String::from_utf8_lossy(&output.stderr).trim());
+                return Ok(false);
             }
         } else {
             anyhow::bail!(
@@ -72,10 +76,10 @@ impl HPatchZ {
             )
         }
 
-        Ok(())
+        Ok(true)
     }
 
-    /// Patch file and log which file failed with hpatchz error message
+    /// Patch file and log which file failed
     ///
     /// Doesnt delete source_file when source_file != target_file
     ///
@@ -100,7 +104,6 @@ impl HPatchZ {
                 let _ = fs::remove_file(&patch_file);
             } else if !output.stderr.is_empty() {
                 println!("Failed to patch: {}", source_file.as_ref().display());
-                utils::print_err(String::from_utf8_lossy(&output.stderr).trim());
             }
         } else {
             anyhow::bail!(

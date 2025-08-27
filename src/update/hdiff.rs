@@ -6,7 +6,10 @@ use std::{
 use anyhow::{Context, Result};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
-use crate::{types::CustomDiffMap, utils::pb_helper::create_progress_bar};
+use crate::{
+    types::CustomDiffMap,
+    utils::{self, pb_helper::create_progress_bar},
+};
 use crate::{
     types::{DiffEntry, HDiffMap},
     utils::hpatchz::HPatchZ,
@@ -83,7 +86,12 @@ impl<'a> HDiff<'a> {
                     source_file = PathBuf::new();
                 }
 
-                HPatchZ::patch_file(source_file, patch_file, target_file)?;
+                let result = HPatchZ::patch_file(&source_file, &patch_file, &target_file)?;
+                if !result {
+                    pb.suspend(|| {
+                        println!("Failed to patch: {}", source_file.display());
+                    });
+                }
                 pb.inc(1);
 
                 Ok(())
@@ -104,7 +112,12 @@ impl<'a> HDiff<'a> {
                 let patch_file = self.game_path.join(format!("{}.hdiff", &entry.remote_name));
                 let target_file = self.game_path.join(&entry.remote_name);
 
-                HPatchZ::patch_file(source_file, patch_file, target_file)?;
+                let result = HPatchZ::patch_file(&source_file, &patch_file, &target_file)?;
+                if !result {
+                    pb.suspend(|| {
+                        println!("Failed to patch: {}", source_file.display());
+                    });
+                }
                 pb.inc(1);
 
                 Ok(())
