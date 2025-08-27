@@ -52,7 +52,6 @@ impl SevenZip {
             .arg("l")
             .arg("-ba")
             .arg(archive.as_ref())
-            .arg("-mmt=on")
             .output()
             .map_err(|e| anyhow::anyhow!("Failed to run 7z: {}", e))?;
 
@@ -84,7 +83,6 @@ impl SevenZip {
             .args(files_in_archive)
             .arg(format!("-o{}", dst.as_ref().display()))
             .arg("-aoa")
-            .arg("-mmt=on")
             .output()
             .context("7-zip failed to run using Command")?;
 
@@ -106,7 +104,6 @@ impl SevenZip {
             .arg(format!("-o{}", dst.as_ref().display()))
             .arg("-aoa")
             .args(["-x!hdiffmap.json", "-x!deletefiles.txt"])
-            .arg("-mmt=on")
             .output()
             .context("7-zip failed to run using Command")?;
 
@@ -128,7 +125,6 @@ impl SevenZip {
             .arg(format!("-o{}", dst.as_ref().display()))
             .arg("-aoa")
             .args(["-x!hdifffiles.txt", "-x!deletefiles.txt"])
-            .arg("-mmt=on")
             .output()
             .context("7-zip failed to run using Command")?;
 
@@ -149,7 +145,6 @@ impl SevenZip {
             .arg(archive.as_ref())
             .arg(format!("-o{}", dst.as_ref().display()))
             .arg("-aoa")
-            .arg("-mmt=on")
             .output()
             .context("7-zip failed to run using Command")?;
 
