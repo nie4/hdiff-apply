@@ -31,15 +31,21 @@ impl SevenZip {
     fn extract_embedded_sevenz() -> Result<PathBuf> {
         // 7z.exe is embedded via include_bytes!
         const SEVENZ_BIN: &[u8] = include_bytes!("../../bin/7z.exe");
+        const SEVENZ_DLL_BIN: &[u8] = include_bytes!("../../bin/7z.dll");
+
         let temp_dir = std::env::temp_dir().join(TEMP_DIR_NAME);
 
         fs::create_dir_all(&temp_dir)
             .with_context(|| format!("Failed to create temp directory '{}'", temp_dir.display()))?;
 
         let exe_path = temp_dir.join("7z.exe");
+        let dll_path = temp_dir.join("7z.dll");
+
         // Overwrite if already exists
         fs::write(&exe_path, SEVENZ_BIN)
             .with_context(|| format!("Failed to write 7z.exe to '{}'", exe_path.display()))?;
+        fs::write(&dll_path, SEVENZ_DLL_BIN)
+            .with_context(|| format!("Failed to write 7z.dll to '{}'", exe_path.display()))?;
 
         Ok(exe_path)
     }

@@ -6,10 +6,7 @@ use std::{
 use anyhow::{Context, Result};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
-use crate::{
-    types::CustomDiffMap,
-    utils::{self, pb_helper::create_progress_bar},
-};
+use crate::{types::CustomDiffMap, utils::pb_helper::create_progress_bar};
 use crate::{
     types::{DiffEntry, HDiffMap},
     utils::hpatchz::HPatchZ,
