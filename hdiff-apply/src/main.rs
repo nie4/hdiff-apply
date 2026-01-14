@@ -17,13 +17,34 @@ mod patchers;
 mod update_package;
 
 #[derive(Parser, Debug)]
+#[command(
+    name = "hdiff-apply",
+    version,
+    about = "Patching utility for SR",
+    after_help = "EXAMPLES:\n  \
+    # Apply patches from current directory\n  \
+    hdiff-apply\n\n  \
+    # Specify game installation path\n  \
+    hdiff-apply -g \"C:\\Games\\GameName\"\n\n  \
+    # Patch archives in different directory\n  \
+    hdiff-apply -g \"C:\\Games\\GameName\" -a \"D:\\Downloads\\patches\"\n\n"
+)]
 struct Args {
-    #[arg(short, long, default_value = ".")]
+    #[arg(
+        short,
+        long,
+        default_value = ".",
+        value_name = "PATH",
+        help = "Game installation directory"
+    )]
     game_path: PathBuf,
-    #[arg(short, long)]
+    #[arg(
+        short,
+        long,
+        value_name = "PATH",
+        help = "Directory containing patch archives (defaults to game_path)"
+    )]
     archives_path: Option<PathBuf>,
-    #[arg(short, long)]
-    legacy_mode: bool,
 }
 
 fn main() {
