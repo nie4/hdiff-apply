@@ -1,0 +1,19 @@
+[package]
+name = "hdiff-apply"
+version = "2.0.0"
+edition = "2024"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+crossterm.workspace = true
+ruzstd.workspace = true
+prost.workspace = true
+rayon.workspace = true
+tempfile.workspace = true
+walkdir.workspace = true
+serde_json.workspace = true
+common.workspace = true
+seven-zip.workspace = true
+hpatchz.workspace = true
+indicatif.workspace = true
