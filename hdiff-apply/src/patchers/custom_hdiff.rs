@@ -109,14 +109,12 @@ impl CustomHdiff {
 }
 
 impl Patcher for CustomHdiff {
-    fn patch(&self, game_path: &Path, progress: Option<&ProgressBar>) -> Result<()> {
+    fn patch(&self, game_path: &Path, progress: &ProgressBar) -> Result<()> {
         let custom_hdiff_type = Self::detect_hdiff_type(&game_path);
         let diff_entries = Self::load_diff_entries(&game_path, custom_hdiff_type)?;
 
-        if let Some(pb) = progress {
-            pb.set_length(diff_entries.len() as u64);
-            pb.set_message("Patching files");
-        }
+        progress.set_length(diff_entries.len() as u64);
+        progress.set_message("Patching files");
 
         match self.patch_files(game_path, &diff_entries, progress) {
             Ok(_) => {

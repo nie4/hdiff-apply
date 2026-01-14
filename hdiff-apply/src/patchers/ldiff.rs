@@ -165,16 +165,14 @@ impl Ldiff {
 }
 
 impl Patcher for Ldiff {
-    fn patch(&self, game_path: &Path, progress: Option<&ProgressBar>) -> Result<()> {
+    fn patch(&self, game_path: &Path, progress: &ProgressBar) -> Result<()> {
         let manifest = Self::load_manifest(game_path).context("Ldiff manifest not found")?;
         Self::extract_hdiff_files(&manifest, game_path).context("Failed to extract hdiff files")?;
         let diff_entries =
             Self::create_diff_entries(&manifest).context("Failed to create diff entries")?;
 
-        if let Some(pb) = progress {
-            pb.set_length(diff_entries.len() as u64);
-            pb.set_message("Patching files");
-        }
+        progress.set_length(diff_entries.len() as u64);
+        progress.set_message("Patching files");
 
         match self.patch_files(game_path, &diff_entries, progress) {
             Ok(_) => {

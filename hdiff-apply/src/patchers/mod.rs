@@ -17,14 +17,14 @@ mod hdiff;
 mod ldiff;
 
 pub trait Patcher {
-    fn patch(&self, game_path: &Path, progress: Option<&ProgressBar>) -> Result<()>;
+    fn patch(&self, game_path: &Path, progress: &ProgressBar) -> Result<()>;
     fn name(&self) -> &'static str;
 
     fn patch_files(
         &self,
         game_path: &Path,
         diff_entries: &[DiffEntry],
-        progress: Option<&ProgressBar>,
+        progress: &ProgressBar,
     ) -> Result<()> {
         let staging_dir =
             TempDir::new_in(game_path).context("Failed to create staging directory")?;
@@ -56,18 +56,14 @@ pub trait Patcher {
                     },
                 )?;
 
-                if let Some(pb) = progress {
-                    pb.inc(1);
-                }
+                progress.inc(1);
 
                 Ok(())
             })?;
 
-        if let Some(pb) = progress {
-            pb.set_message("Merging files");
-            pb.set_position(0);
-            pb.set_length(diff_entries.len() as u64);
-        }
+        progress.set_message("Merging files");
+        progress.set_position(0);
+        progress.set_length(diff_entries.len() as u64);
 
         diff_entries
             .par_iter()
@@ -79,9 +75,7 @@ pub trait Patcher {
                     .or_else(|_| fs::copy(&staged_file, &target_file).map(|_| ()))
                     .with_context(|| format!("Failed to move: {}", entry.target_file_name))?;
 
-                if let Some(pb) = progress {
-                    pb.inc(1);
-                }
+                progress.inc(1);
 
                 Ok(())
             })?;
@@ -114,7 +108,7 @@ impl PatchManager {
         }
     }
 
-    pub fn patch(&self, progress: Option<&ProgressBar>) -> Result<()> {
+    pub fn patch(&self, progress: &ProgressBar) -> Result<()> {
         self.patcher.patch(&self.game_path, progress)
     }
 

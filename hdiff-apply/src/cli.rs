@@ -52,7 +52,7 @@ pub fn run(args: &Args) -> Result<()> {
                 .progress_chars("##-"),
         );
 
-        if let Err(e) = patcher.patch(Some(&patch_bar)) {
+        if let Err(e) = patcher.patch(&patch_bar) {
             patch_bar.finish_and_clear();
             return Err(e.context("Patch error - game files remain unchanged!"));
         }

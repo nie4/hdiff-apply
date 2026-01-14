@@ -26,13 +26,11 @@ impl Hdiff {
 }
 
 impl Patcher for Hdiff {
-    fn patch(&self, game_path: &Path, progress: Option<&ProgressBar>) -> Result<()> {
+    fn patch(&self, game_path: &Path, progress: &ProgressBar) -> Result<()> {
         let diff_entries = Self::load_diff_entries(&game_path)?;
 
-        if let Some(pb) = progress {
-            pb.set_length(diff_entries.len() as u64);
-            pb.set_message("Patching files");
-        }
+        progress.set_length(diff_entries.len() as u64);
+        progress.set_message("Patching files");
 
         self.patch_files(game_path, &diff_entries, progress)?;
 
@@ -47,7 +45,7 @@ impl Patcher for Hdiff {
         &self,
         game_path: &Path,
         diff_entries: &[DiffEntry],
-        progress: Option<&ProgressBar>,
+        progress: &ProgressBar,
     ) -> Result<()> {
         diff_entries
             .par_iter()
@@ -72,9 +70,7 @@ impl Patcher for Hdiff {
                     },
                 )?;
 
-                if let Some(pb) = progress {
-                    pb.inc(1);
-                }
+                progress.inc(1);
 
                 Ok(())
             })?;
