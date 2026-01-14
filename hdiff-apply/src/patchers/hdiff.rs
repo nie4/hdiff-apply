@@ -11,7 +11,7 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::patchers::Patcher;
 
-// Old hdiff format if something fails its probably gg
+// Old patching format if something fails its probably gg
 pub struct Hdiff;
 
 impl Hdiff {
@@ -23,8 +23,28 @@ impl Hdiff {
 
         Ok(hdiff_map.diff_map)
     }
+}
+
+impl Patcher for Hdiff {
+    fn patch(&self, game_path: &Path, progress: Option<&ProgressBar>) -> Result<()> {
+        let diff_entries = Self::load_diff_entries(&game_path)?;
+
+        if let Some(pb) = progress {
+            pb.set_length(diff_entries.len() as u64);
+            pb.set_message("Patching files");
+        }
+
+        self.patch_files(game_path, &diff_entries, progress)?;
+
+        Ok(())
+    }
+
+    fn name(&self) -> &'static str {
+        "HDiff"
+    }
 
     fn patch_files(
+        &self,
         game_path: &Path,
         diff_entries: &[DiffEntry],
         progress: Option<&ProgressBar>,
@@ -60,24 +80,5 @@ impl Hdiff {
             })?;
 
         Ok(())
-    }
-}
-
-impl Patcher for Hdiff {
-    fn patch(&self, game_path: &Path, progress: Option<&ProgressBar>) -> Result<()> {
-        let diff_entries = Self::load_diff_entries(&game_path)?;
-
-        if let Some(pb) = progress {
-            pb.set_length(diff_entries.len() as u64);
-            pb.set_message("Patching files");
-        }
-
-        Self::patch_files(game_path, &diff_entries, progress)?;
-
-        Ok(())
-    }
-
-    fn name(&self) -> &'static str {
-        "HDiff"
     }
 }
