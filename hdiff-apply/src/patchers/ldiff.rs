@@ -7,13 +7,11 @@ use std::{fs::File, path::PathBuf};
 use anyhow::{Context, Result, anyhow};
 use common::manifest_proto::{Asset, AssetProperty, SophonManifestProto};
 use common::types::DiffEntry;
-use hpatchz::HPatchZ;
 use indicatif::ProgressBar;
 use prost::Message;
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use ruzstd::decoding::StreamingDecoder;
 use ruzstd::io::Read;
-use tempfile::TempDir;
 use walkdir::WalkDir;
 
 use crate::patchers::Patcher;
@@ -164,70 +162,6 @@ impl Ldiff {
 
         Ok(())
     }
-
-    fn patch_files(
-        game_path: &Path,
-        diff_entries: &[DiffEntry],
-        progress: Option<&ProgressBar>,
-    ) -> Result<()> {
-        let staging_dir =
-            TempDir::new_in(game_path).context("Failed to create staging directory")?;
-
-        diff_entries
-            .par_iter()
-            .try_for_each(|entry| -> Result<()> {
-                let source_file = if entry.source_file_name.is_empty() {
-                    PathBuf::new()
-                } else {
-                    game_path.join(&entry.source_file_name)
-                };
-
-                let patch_file = game_path.join(&entry.patch_file_name);
-                let target_file = staging_dir.path().join(&entry.target_file_name);
-
-                if let Some(parent) = target_file.parent() {
-                    fs::create_dir_all(parent)?;
-                }
-
-                HPatchZ::patch_file(&source_file, &patch_file, &target_file).with_context(
-                    || {
-                        format!(
-                            "Failed to patch: {} + {} -> {}",
-                            source_file.display(),
-                            patch_file.display(),
-                            entry.target_file_name
-                        )
-                    },
-                )?;
-
-                if let Some(pb) = progress {
-                    pb.inc(1);
-                }
-
-                Ok(())
-            })?;
-
-        if let Some(pb) = progress {
-            pb.set_message("Merging files");
-            pb.set_position(0);
-            pb.set_length(diff_entries.len() as u64);
-        }
-
-        for entry in diff_entries {
-            let staged_file = staging_dir.path().join(&entry.target_file_name);
-            let target_file = game_path.join(&entry.target_file_name);
-
-            fs::rename(&staged_file, &target_file)
-                .or_else(|_| fs::copy(&staged_file, &target_file).map(|_| ()))
-                .with_context(|| format!("Failed to move: {}", entry.target_file_name))?;
-
-            if let Some(pb) = progress {
-                pb.inc(1);
-            }
-        }
-
-        Ok(())
-    }
 }
 
 impl Patcher for Ldiff {
@@ -242,7 +176,7 @@ impl Patcher for Ldiff {
             pb.set_message("Patching files");
         }
 
-        match Self::patch_files(game_path, &diff_entries, progress) {
+        match self.patch_files(game_path, &diff_entries, progress) {
             Ok(_) => {
                 Self::cleanup_ldiff_files(game_path, &diff_entries);
                 Self::cleanup_old_files(game_path, &diff_entries, &manifest)?;

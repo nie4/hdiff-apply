@@ -1,7 +1,14 @@
-use std::path::{Path, PathBuf};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
+use common::types::DiffEntry;
+use hpatchz::HPatchZ;
 use indicatif::ProgressBar;
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use tempfile::TempDir;
 
 use crate::patchers::{custom_hdiff::CustomHdiff, hdiff::Hdiff, ldiff::Ldiff};
 
@@ -12,6 +19,75 @@ mod ldiff;
 pub trait Patcher {
     fn patch(&self, game_path: &Path, progress: Option<&ProgressBar>) -> Result<()>;
     fn name(&self) -> &'static str;
+
+    fn patch_files(
+        &self,
+        game_path: &Path,
+        diff_entries: &[DiffEntry],
+        progress: Option<&ProgressBar>,
+    ) -> Result<()> {
+        let staging_dir =
+            TempDir::new_in(game_path).context("Failed to create staging directory")?;
+
+        diff_entries
+            .par_iter()
+            .try_for_each(|entry| -> Result<()> {
+                let source_file = if entry.source_file_name.is_empty() {
+                    PathBuf::new()
+                } else {
+                    game_path.join(&entry.source_file_name)
+                };
+
+                let patch_file = game_path.join(&entry.patch_file_name);
+                let target_file = staging_dir.path().join(&entry.target_file_name);
+
+                if let Some(parent) = target_file.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+
+                HPatchZ::patch_file(&source_file, &patch_file, &target_file).with_context(
+                    || {
+                        format!(
+                            "Failed to patch: {} + {} -> {}",
+                            source_file.display(),
+                            patch_file.display(),
+                            entry.target_file_name
+                        )
+                    },
+                )?;
+
+                if let Some(pb) = progress {
+                    pb.inc(1);
+                }
+
+                Ok(())
+            })?;
+
+        if let Some(pb) = progress {
+            pb.set_message("Merging files");
+            pb.set_position(0);
+            pb.set_length(diff_entries.len() as u64);
+        }
+
+        diff_entries
+            .par_iter()
+            .try_for_each(|entry| -> Result<()> {
+                let staged_file = staging_dir.path().join(&entry.target_file_name);
+                let target_file = game_path.join(&entry.target_file_name);
+
+                fs::rename(&staged_file, &target_file)
+                    .or_else(|_| fs::copy(&staged_file, &target_file).map(|_| ()))
+                    .with_context(|| format!("Failed to move: {}", entry.target_file_name))?;
+
+                if let Some(pb) = progress {
+                    pb.inc(1);
+                }
+
+                Ok(())
+            })?;
+
+        Ok(())
+    }
 }
 
 pub struct PatchManager {
