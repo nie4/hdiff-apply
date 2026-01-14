@@ -39,7 +39,7 @@ impl CustomHdiff {
     }
 
     fn load_normal_format(game_path: &Path) -> Result<Vec<DiffEntry>> {
-        let hdiffmap_path = game_path.join("hdifffiles.json");
+        let hdiffmap_path = game_path.join("hdifffiles.txt");
         let data = fs::read_to_string(&hdiffmap_path)
             .with_context(|| format!("Failed to read {}", hdiffmap_path.display()))?;
 
@@ -130,7 +130,7 @@ impl CustomHdiff {
 
         let _ = fs::remove_file(game_path.join("deletefiles.txt"));
         let _ = fs::remove_file(game_path.join("hdiffmap.json"));
-        let _ = fs::remove_file(game_path.join("hdifffiles.json"));
+        let _ = fs::remove_file(game_path.join("hdifffiles.txt"));
     }
 
     fn cleanup_old_files(game_path: &Path, diff_entries: &[DiffEntry]) -> Result<()> {
