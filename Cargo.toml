@@ -1,23 +1,24 @@
-[package]
-name = "hdiff-apply"
-version = "1.4.2"
-edition = "2021"
+[workspace]
+resolver = "2"
+members = ["hdiff-apply", "seven-zip", "common", "hpatchz"]
 
-[dependencies]
+[workspace.dependencies]
+anyhow = "1.0.100"
+thiserror = "2.0.17"
+clap = { version = "4.5.54", features = ["derive"] }
+crossterm = "0.29.0"
+ruzstd = "0.8.2"
 serde = { version = "1.0.217", features = ["derive"] }
-serde_json = "1.0.134"
-rayon = "1.10.0"
-crossterm = "0.28.1"
-rand = "0.9.1"
-md-5 = "0.10.6"
-indicatif = "0.18.0"
-regex = { version = "1.11.1", default-features = false, features = [
-    "std",
-    "unicode-perl",
-] }
-ruzstd = { version = "0.8.1", git = "https://github.com/KillingSpark/zstd-rs" }
-anyhow = "1.0.99"
-prost = "0.14.1"
+prost = "0.14.3"
+rayon = "1.11.0"
+tempfile = "3.24.0"
+walkdir = "2.5.0"
+serde_json = "1.0.149"
+indicatif = "0.18.3"
+
+common = { path = "common/" }
+seven-zip = { path = "seven-zip/" }
+hpatchz = { path = "hpatchz/" }
 
 [profile.release]
 strip = true
