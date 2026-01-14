@@ -26,7 +26,7 @@ impl Hdiff {
 }
 
 impl Patcher for Hdiff {
-    fn patch(&self, game_path: &Path, progress: &ProgressBar) -> Result<()> {
+    fn start(&self, game_path: &Path, progress: &ProgressBar) -> Result<()> {
         let diff_entries = Self::load_diff_entries(&game_path)?;
 
         progress.set_length(diff_entries.len() as u64);

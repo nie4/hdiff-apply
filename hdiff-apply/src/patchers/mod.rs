@@ -17,7 +17,7 @@ mod hdiff;
 mod ldiff;
 
 pub trait Patcher {
-    fn patch(&self, game_path: &Path, progress: &ProgressBar) -> Result<()>;
+    fn start(&self, game_path: &Path, progress: &ProgressBar) -> Result<()>;
     fn name(&self) -> &'static str;
 
     fn patch_files(
@@ -109,7 +109,7 @@ impl PatchManager {
     }
 
     pub fn patch(&self, progress: &ProgressBar) -> Result<()> {
-        self.patcher.patch(&self.game_path, progress)
+        self.patcher.start(&self.game_path, progress)
     }
 
     pub fn patcher_name(&self) -> &'static str {

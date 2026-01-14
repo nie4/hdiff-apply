@@ -109,7 +109,7 @@ impl CustomHdiff {
 }
 
 impl Patcher for CustomHdiff {
-    fn patch(&self, game_path: &Path, progress: &ProgressBar) -> Result<()> {
+    fn start(&self, game_path: &Path, progress: &ProgressBar) -> Result<()> {
         let custom_hdiff_type = Self::detect_hdiff_type(&game_path);
         let diff_entries = Self::load_diff_entries(&game_path, custom_hdiff_type)?;
 
