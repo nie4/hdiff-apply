@@ -1,6 +1,8 @@
 use std::{
     collections::HashSet,
+    fs,
     io::{self, Write},
+    path::Path,
 };
 
 use anyhow::{Context, Result, anyhow, bail};
@@ -9,6 +11,8 @@ use crossterm::{
     terminal::{self, ClearType},
 };
 use indicatif::{ProgressBar, ProgressStyle};
+use tempfile::TempDir;
+use walkdir::WalkDir;
 
 use crate::{Args, patchers::PatchManager, update_package::UpdatePackage};
 
@@ -17,9 +21,23 @@ pub fn run(args: &Args) -> Result<()> {
         return Err(anyhow!("Game path doesn't exist"));
     }
 
-    let archives_path = args.archives_path.as_ref().unwrap_or(&args.game_path);
-
     print_banner();
+
+    if args.legacy {
+        return run_legacy(args);
+    }
+
+    run_with_archives(args)
+}
+
+fn run_legacy(args: &Args) -> Result<()> {
+    println!("Running in legacy mode");
+    run_patcher(&args.game_path, &args.game_path)?;
+    Ok(())
+}
+
+fn run_with_archives(args: &Args) -> Result<()> {
+    let archives_path = args.archives_path.as_ref().unwrap_or(&args.game_path);
 
     let archives = UpdatePackage::find(&archives_path)?;
     if archives.is_empty() {
@@ -38,32 +56,81 @@ pub fn run(args: &Args) -> Result<()> {
         print!("  Extracting archive... ");
         io::stdout().flush()?;
 
-        if let Err(e) = package.extract(&args.game_path) {
-            println!("FAILED");
-            return Err(e);
-        }
+        let temp_extract = TempDir::new()?;
+        package.extract(&temp_extract.path().to_path_buf())?;
         println!("OK");
 
-        let patcher = PatchManager::new(&args.game_path);
-        let patch_bar = ProgressBar::new(0);
-        patch_bar.set_style(
-            ProgressStyle::default_bar()
-                .template("  {msg:<20} [{bar:40.cyan/blue}] {pos:>4}/{len:4} ({percent}%)")?
-                .progress_chars("##-"),
-        );
-
-        if let Err(e) = patcher.patch(&patch_bar) {
-            patch_bar.finish_and_clear();
-            return Err(e.context("Patch error - game files remain unchanged!"));
-        }
-
-        patch_bar.finish_and_clear();
-        println!("  Patching complete using {}", patcher.patcher_name());
-        println!();
+        run_patcher(&args.game_path, temp_extract.path())?;
+        merge_into_game(temp_extract.path(), &args.game_path)?;
     }
 
     println!("-------------------------------");
     println!("All {} updates completed successfully!", total_count);
+
+    Ok(())
+}
+
+fn merge_into_game(from: &Path, to: &Path) -> Result<()> {
+    for entry in WalkDir::new(from) {
+        let entry = entry?;
+        let rel = entry.path().strip_prefix(from)?;
+
+        if rel
+            .components()
+            .any(|c| is_patch_metadata(Path::new(c.as_os_str())))
+        {
+            continue;
+        }
+
+        let target = to.join(rel);
+
+        if entry.file_type().is_dir() {
+            fs::create_dir_all(&target)?;
+        } else {
+            if let Some(parent) = target.parent() {
+                fs::create_dir_all(parent)?;
+            }
+
+            fs::rename(entry.path(), &target)
+                .or_else(|_| fs::copy(entry.path(), &target).map(|_| ()))?;
+        }
+    }
+
+    Ok(())
+}
+
+fn is_patch_metadata(path: &Path) -> bool {
+    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    if matches!(name, "hdifffiles.txt" | "hdiffmap.json" | "deletefiles.txt") {
+        return true;
+    }
+    if name.starts_with("manifest") {
+        return true;
+    }
+    if name == "ldiff" {
+        return true;
+    }
+    false
+}
+
+fn run_patcher(game_path: &Path, patch_path: &Path) -> Result<()> {
+    let patcher = PatchManager::new(game_path, patch_path)?;
+
+    let patch_bar = ProgressBar::new(0);
+    patch_bar.set_style(
+        ProgressStyle::default_bar()
+            .template("  {msg:<20} [{bar:40.cyan/blue}] {pos:>4}/{len:4} ({percent}%)")?
+            .progress_chars("##-"),
+    );
+
+    if let Err(e) = patcher.patch(&patch_bar) {
+        patch_bar.finish_and_clear();
+        return Err(e.context("Patch failed - game files remain unchanged!"));
+    }
+
+    patch_bar.finish_and_clear();
+    println!("  Patching complete using {}", patcher.patcher_name());
+    println!();
 
     Ok(())
 }

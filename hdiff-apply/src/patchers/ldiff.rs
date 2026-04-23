@@ -16,19 +16,24 @@ use walkdir::WalkDir;
 
 use crate::patchers::Patcher;
 
-pub struct Ldiff;
+pub struct Ldiff {
+    manifest_path: PathBuf,
+}
 
 impl Ldiff {
-    fn load_manifest(game_path: &Path) -> Result<SophonManifestProto> {
-        let mut manifest_file =
-            File::open(game_path.join("manifest")).context("Ldiff manifest file not found!")?;
+    pub fn new(manifest_path: PathBuf) -> Self {
+        Self { manifest_path }
+    }
 
+    fn load_manifest(manifest_path: &Path) -> Result<SophonManifestProto> {
+        let mut manifest_file =
+            File::open(manifest_path).context("Failed to open ldiff manifest file")?;
         let mut decoder = StreamingDecoder::new(&mut manifest_file)?;
         let mut manifest_decompressed = Vec::new();
         decoder.read_to_end(&mut manifest_decompressed)?;
 
         SophonManifestProto::decode(manifest_decompressed.as_slice())
-            .context("Failed to decode manifest proto")
+            .context("Failed to decode ldiff manifest proto")
     }
 
     fn asset_pairs<'a>(
@@ -73,7 +78,7 @@ impl Ldiff {
             .collect()
     }
 
-    fn extract_hdiff_files(manifest: &SophonManifestProto, game_path: &Path) -> Result<()> {
+    fn extract_hdiff_files(manifest: &SophonManifestProto, patch_path: &Path) -> Result<()> {
         Self::asset_pairs(manifest)
             .collect::<Vec<_>>()
             .into_par_iter()
@@ -81,8 +86,8 @@ impl Ldiff {
                 let patch_file_name =
                     Self::get_patch_file_name(&asset.asset_name, &patch_asset.original_file_path);
 
-                let chunk_path = game_path.join("ldiff").join(&patch_asset.chunk_file_name);
-                let output_path = game_path.join(&patch_file_name);
+                let chunk_path = patch_path.join("ldiff").join(&patch_asset.chunk_file_name);
+                let output_path = patch_path.join(&patch_file_name);
 
                 if let Some(parent) = output_path.parent() {
                     fs::create_dir_all(parent)?;
@@ -109,13 +114,10 @@ impl Ldiff {
         Ok(())
     }
 
-    fn cleanup_ldiff_files(game_path: &Path, diff_entries: &[DiffEntry]) {
+    fn cleanup_generated_hdiff(patch_path: &Path, diff_entries: &[DiffEntry]) {
         diff_entries.par_iter().for_each(|entry| {
-            let _ = fs::remove_file(game_path.join(&entry.patch_file_name));
+            let _ = fs::remove_file(patch_path.join(&entry.patch_file_name));
         });
-
-        let _ = fs::remove_dir_all(game_path.join("ldiff"));
-        let _ = fs::remove_file(game_path.join("manifest"));
     }
 
     fn cleanup_old_files(
@@ -165,22 +167,28 @@ impl Ldiff {
 }
 
 impl Patcher for Ldiff {
-    fn start(&self, game_path: &Path, progress: &ProgressBar) -> Result<()> {
-        let manifest = Self::load_manifest(game_path).context("Ldiff manifest not found")?;
-        Self::extract_hdiff_files(&manifest, game_path).context("Failed to extract hdiff files")?;
+    fn start(&self, game_path: &Path, patch_path: &Path, progress: &ProgressBar) -> Result<()> {
+        progress.unset_length();
+        progress.set_message("Reading manifest");
+        let manifest = Self::load_manifest(&self.manifest_path)?;
+
+        progress.set_message("Extracting files");
+        Self::extract_hdiff_files(&manifest, patch_path)
+            .context("Failed to extract hdiff files from ldiff")?;
+
         let diff_entries =
             Self::create_diff_entries(&manifest).context("Failed to create diff entries")?;
 
         progress.set_length(diff_entries.len() as u64);
         progress.set_message("Patching files");
 
-        match self.patch_files(game_path, &diff_entries, progress) {
+        match self.patch_files(game_path, patch_path, &diff_entries, progress) {
             Ok(_) => {
-                Self::cleanup_ldiff_files(game_path, &diff_entries);
+                Self::cleanup_generated_hdiff(patch_path, &diff_entries);
                 Self::cleanup_old_files(game_path, &diff_entries, &manifest)?;
             }
             Err(e) => {
-                Self::cleanup_ldiff_files(game_path, &diff_entries);
+                Self::cleanup_generated_hdiff(patch_path, &diff_entries);
                 return Err(anyhow!("{e}"));
             }
         }
@@ -189,6 +197,6 @@ impl Patcher for Ldiff {
     }
 
     fn name(&self) -> &'static str {
-        "LDiff"
+        "ldiff"
     }
 }

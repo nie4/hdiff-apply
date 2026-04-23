@@ -45,6 +45,8 @@ struct Args {
         help = "Directory containing patch archives (defaults to game_path)"
     )]
     archives_path: Option<PathBuf>,
+    #[arg(short, long)]
+    legacy: bool,
 }
 
 fn main() {
