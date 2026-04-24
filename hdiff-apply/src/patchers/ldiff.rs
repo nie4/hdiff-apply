@@ -5,7 +5,7 @@ use std::path::Path;
 use std::{fs::File, path::PathBuf};
 
 use anyhow::{Context, Result, anyhow};
-use common::manifest_proto::{Asset, AssetProperty, SophonManifestProto};
+use common::sophon_proto::{SophonPatchAssetChunk, SophonPatchAssetProperty, SophonPatchProto};
 use common::types::DiffEntry;
 use indicatif::ProgressBar;
 use prost::Message;
@@ -25,29 +25,26 @@ impl Ldiff {
         Self { manifest_path }
     }
 
-    fn load_manifest(manifest_path: &Path) -> Result<SophonManifestProto> {
+    fn load_manifest(manifest_path: &Path) -> Result<SophonPatchProto> {
         let mut manifest_file =
             File::open(manifest_path).context("Failed to open ldiff manifest file")?;
         let mut decoder = StreamingDecoder::new(&mut manifest_file)?;
         let mut manifest_decompressed = Vec::new();
         decoder.read_to_end(&mut manifest_decompressed)?;
 
-        SophonManifestProto::decode(manifest_decompressed.as_slice())
+        SophonPatchProto::decode(manifest_decompressed.as_slice())
             .context("Failed to decode ldiff manifest proto")
     }
 
     fn asset_pairs<'a>(
-        manifest: &'a SophonManifestProto,
-    ) -> impl Iterator<Item = (&'a AssetProperty, &'a Asset)> + 'a {
-        manifest
-            .assets
-            .iter()
-            .filter_map(|asset| asset.asset_data.as_ref().map(|data| (asset, data)))
-            .flat_map(|(asset, data)| {
-                data.assets
-                    .iter()
-                    .map(move |patch_asset| (asset, patch_asset))
-            })
+        manifest: &'a SophonPatchProto,
+    ) -> impl Iterator<Item = (&'a SophonPatchAssetProperty, &'a SophonPatchAssetChunk)> + 'a {
+        manifest.patch_assets.iter().flat_map(|asset_prop| {
+            asset_prop
+                .asset_infos
+                .iter()
+                .filter_map(move |info| info.chunk.as_ref().map(|chunk| (asset_prop, chunk)))
+        })
     }
 
     fn get_patch_file_name(asset_name: &str, original_path: &str) -> String {
@@ -58,19 +55,19 @@ impl Ldiff {
         }
     }
 
-    fn create_diff_entries(manifest: &SophonManifestProto) -> Result<Vec<DiffEntry>> {
+    fn create_diff_entries(manifest: &SophonPatchProto) -> Result<Vec<DiffEntry>> {
         Self::asset_pairs(manifest)
-            .map(|(asset, update_asset)| {
+            .map(|(asset_prop, chunk)| {
                 Ok(DiffEntry {
-                    source_file_name: update_asset.original_file_path.clone(),
-                    source_file_md5: update_asset.original_file_md5.clone(),
-                    source_file_size: update_asset.original_file_size as u64,
-                    target_file_name: asset.asset_name.clone(),
-                    target_file_md5: asset.asset_hash_md5.clone(),
-                    target_file_size: asset.asset_size as u64,
+                    source_file_name: chunk.original_file_name.clone(),
+                    source_file_size: chunk.original_file_length as u64,
+                    source_file_md5: chunk.original_file_md5.clone(),
+                    target_file_name: asset_prop.asset_name.clone(),
+                    target_file_md5: asset_prop.asset_hash_md5.clone(),
+                    target_file_size: asset_prop.asset_size as u64,
                     patch_file_name: Self::get_patch_file_name(
-                        &asset.asset_name,
-                        &update_asset.original_file_path,
+                        &asset_prop.asset_name,
+                        &chunk.original_file_name,
                     ),
                     ..Default::default()
                 })
@@ -78,30 +75,27 @@ impl Ldiff {
             .collect()
     }
 
-    fn extract_hdiff_files(manifest: &SophonManifestProto, patch_path: &Path) -> Result<()> {
+    fn extract_hdiff_files(manifest: &SophonPatchProto, patch_path: &Path) -> Result<()> {
         Self::asset_pairs(manifest)
             .collect::<Vec<_>>()
             .into_par_iter()
-            .map(|(asset, patch_asset)| {
+            .map(|(asset_prop, chunk)| {
                 let patch_file_name =
-                    Self::get_patch_file_name(&asset.asset_name, &patch_asset.original_file_path);
+                    Self::get_patch_file_name(&asset_prop.asset_name, &chunk.original_file_name);
 
-                let chunk_path = patch_path.join("ldiff").join(&patch_asset.chunk_file_name);
+                let chunk_path = patch_path.join("ldiff").join(&chunk.patch_name);
                 let output_path = patch_path.join(&patch_file_name);
 
                 if let Some(parent) = output_path.parent() {
                     fs::create_dir_all(parent)?;
                 }
 
-                let mut chunk_file = fs::File::open(&chunk_path).with_context(|| {
-                    format!("Failed to open chunk: {}", patch_asset.chunk_file_name)
-                })?;
+                let mut chunk_file = File::open(&chunk_path)
+                    .with_context(|| format!("Failed to open chunk: {}", chunk.patch_name))?;
 
-                chunk_file.seek(SeekFrom::Start(
-                    patch_asset.hdiff_file_in_chunk_offset as u64,
-                ))?;
+                chunk_file.seek(SeekFrom::Start(chunk.patch_offset as u64))?;
 
-                let mut hdiff_bytes = vec![0u8; patch_asset.hdiff_file_size as usize];
+                let mut hdiff_bytes = vec![0u8; chunk.patch_length as usize];
                 chunk_file.read_exact(&mut hdiff_bytes)?;
 
                 fs::write(&output_path, hdiff_bytes)
@@ -123,7 +117,7 @@ impl Ldiff {
     fn cleanup_old_files(
         game_path: &Path,
         diff_entries: &[DiffEntry],
-        manifest: &SophonManifestProto,
+        manifest: &SophonPatchProto,
     ) -> Result<()> {
         diff_entries.par_iter().for_each(|entry| {
             if !entry.source_file_name.is_empty() {
@@ -136,9 +130,9 @@ impl Ldiff {
         });
 
         let asset_set: HashSet<_> = manifest
-            .assets
+            .patch_assets
             .iter()
-            .map(|asset| PathBuf::from(&asset.asset_name))
+            .map(|asset_prop| PathBuf::from(&asset_prop.asset_name))
             .collect();
 
         let data_path = game_path.join("StarRail_Data");

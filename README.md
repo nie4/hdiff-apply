@@ -1,7 +1,7 @@
 # hdiff-apply
 
 ## Features
-- Support for HDiff, LDiff and custom made HDiff
+- Support for HDiff and LDiff
 - Sequential updates
 - Parallelized patching process
 - Safe patching: Game files remain unchanged if patching fails
@@ -48,7 +48,8 @@ cargo build --release
 ## Credits
 - [HDiffPatch](https://github.com/sisong/HDiffPatch) for the patching utility (`hpatchz/bin/hpatchz.exe`)
 - [7-Zip](https://7-zip.org/) for file archive utility (`seven-zip/bin/7z.exe`)
-- [SophonPatcher](https://github.com/WatchAndyTW/SophonPatcher/) for ldiff manifest proto
+- [SophonPatcher](https://github.com/WatchAndyTW/SophonPatcher/) for original ldiff manifest proto
+- [Hi3Helper.Sophon](https://github.com/CollapseLauncher/Hi3Helper.Sophon) for updated sophon proto
 
 ## Issues & Contributions
 Found a bug or want to contribute? Please open an issue or pull request on [GitHub](https://github.com/nie4/hdiff-apply).
