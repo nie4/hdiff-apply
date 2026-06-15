@@ -50,6 +50,7 @@ struct Args {
 }
 
 fn main() {
+    #[cfg(target_os = "windows")]
     crossterm::ansi_support::supports_ansi();
     let args = Args::parse();
     let should_pause = env::args().len() == 1;
