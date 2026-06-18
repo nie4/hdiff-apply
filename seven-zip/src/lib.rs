@@ -24,25 +24,41 @@ impl SevenZip {
     fn new() -> Result<Self> {
         let temp_dir = common::path::get_temp_dir()?;
 
-        const SEVENZ_EXE: &[u8] = include_bytes!("../bin/7z.exe");
-        const SEVENZ_DLL: &[u8] = include_bytes!("../bin/7z.dll");
+        #[cfg(target_os = "linux")]
+        {
+            use std::os::unix::fs::PermissionsExt;
 
-        let exe_path = temp_dir.join("7z.exe");
-        let dll_path = temp_dir.join("7z.dll");
+            const SEVENZ_BINARY: &[u8] = include_bytes!("../bin/linux-x64/7zzs");
+            let binary_path = temp_dir.join("7zzs");
 
-        if !exe_path.exists() {
-            fs::write(&exe_path, SEVENZ_EXE).map_err(|e| {
-                SevenZipError::Initialization(format!("Failed to write 7z.exe: {}", e))
+            fs::write(&binary_path, SEVENZ_BINARY).map_err(|e| {
+                SevenZipError::Initialization(format!("Failed to write 7zzs: {}", e))
             })?;
+
+            fs::set_permissions(&binary_path, fs::Permissions::from_mode(0o700)).map_err(|e| {
+                SevenZipError::Initialization(format!("Failed to set permissions: {}", e))
+            })?;
+
+            Ok(Self(binary_path))
         }
 
-        if !dll_path.exists() {
+        #[cfg(target_os = "windows")]
+        {
+            const SEVENZ_BINARY: &[u8] = include_bytes!("../bin/windows-x64/7z.exe");
+            const SEVENZ_DLL: &[u8] = include_bytes!("../bin/windows-x64/7z.dll");
+            let binary_path = temp_dir.join("7z.exe");
+            let dll_path = temp_dir.join("7z.dll");
+
+            fs::write(&binary_path, SEVENZ_BINARY).map_err(|e| {
+                SevenZipError::Initialization(format!("Failed to write 7z.exe: {}", e))
+            })?;
+
             fs::write(&dll_path, SEVENZ_DLL).map_err(|e| {
                 SevenZipError::Initialization(format!("Failed to write 7z.dll: {}", e))
             })?;
-        }
 
-        Ok(Self(exe_path))
+            Ok(Self(binary_path))
+        }
     }
 
     fn execute(&self, args: &[impl AsRef<OsStr>]) -> Result<Output> {
