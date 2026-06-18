@@ -30,13 +30,13 @@ pub trait Patcher {
             TempDir::new_in(game_path).context("Failed to create staging directory")?;
 
         progress.set_message("Patching files");
-        progress.set_length(diff_entries.len() as u64);
+        progress.set_length(diff_entries.len() as _);
         progress.set_position(0);
 
+        // Patch files into staging dir
         diff_entries
             .par_iter()
             .try_for_each(|entry| -> Result<()> {
-                // Patch
                 let source_file = if entry.source_file_name.is_empty() {
                     PathBuf::new()
                 } else {
@@ -66,20 +66,29 @@ pub trait Patcher {
                     )
                 })?;
 
-                // Commit
-                let target = game_path.join(&entry.target_file_name);
+                progress.inc(1);
+                Ok(())
+            })?;
 
-                if let Some(parent) = target.parent() {
-                    fs::create_dir_all(parent)?;
-                }
+        // Commit patched files into the game
+        progress.set_message("Merging files");
+        progress.set_position(0);
+        progress.set_length(diff_entries.len() as _);
 
-                fs::rename(&staged, &target)
-                    .or_else(|_| fs::copy(&staged, &target).map(|_| ()))
+        diff_entries
+            .par_iter()
+            .try_for_each(|entry| -> Result<()> {
+                let staged_file = staging_dir.path().join(&entry.target_file_name);
+                let target_file = game_path.join(&entry.target_file_name);
+
+                fs::rename(&staged_file, &target_file)
+                    .or_else(|_| fs::copy(&staged_file, &target_file).map(|_| ()))
                     .with_context(|| {
                         format!("Failed to move into place: {}", entry.target_file_name)
                     })?;
 
                 progress.inc(1);
+
                 Ok(())
             })?;
 
