@@ -5,7 +5,6 @@ members = ["hdiff-apply", "seven-zip", "common", "hpatchz"]
 [workspace.dependencies]
 anyhow = "1.0.100"
 thiserror = "2.0.17"
-clap = { version = "4.5.54", features = ["derive"] }
 crossterm = "0.29.0"
 ruzstd = "0.8.2"
 serde = { version = "1.0.217", features = ["derive"] }

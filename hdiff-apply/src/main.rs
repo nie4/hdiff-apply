@@ -4,10 +4,10 @@ use std::{
     env,
     io::{self, Write},
     path::PathBuf,
+    process,
 };
 
-use anyhow::{Result, anyhow};
-use clap::Parser;
+use anyhow::{Context, Result, anyhow};
 use hpatchz::HPatchZ;
 use seven_zip::SevenZip;
 
@@ -16,37 +16,45 @@ mod cli;
 mod patchers;
 mod update_package;
 
-#[derive(Parser, Debug)]
-#[command(
-    name = "hdiff-apply",
-    version,
-    about = "Patching utility for SR",
-    after_help = "EXAMPLES:\n  \
-    # Apply patches from current directory\n  \
-    hdiff-apply\n\n  \
-    # Specify game installation path\n  \
-    hdiff-apply -g \"C:\\Games\\GameName\"\n\n  \
-    # Patch archives in different directory\n  \
-    hdiff-apply -g \"C:\\Games\\GameName\" -a \"D:\\Downloads\\patches\"\n\n"
-)]
+const USAGE: &'static str = "No help for you";
+
+#[derive(Debug)]
 struct Args {
-    #[arg(
-        short,
-        long,
-        default_value = ".",
-        value_name = "PATH",
-        help = "Game installation directory"
-    )]
-    game_path: PathBuf,
-    #[arg(
-        short,
-        long,
-        value_name = "PATH",
-        help = "Directory containing patch archives (defaults to game_path)"
-    )]
+    game_path: Option<PathBuf>,
     archives_path: Option<PathBuf>,
-    #[arg(short, long)]
-    legacy: bool,
+}
+
+impl Args {
+    fn parse() -> Self {
+        let mut game_path = Option::default();
+        let mut archives_path = Option::default();
+
+        let mut args = env::args().skip(1);
+        while let Some(arg) = args.next() {
+            match arg.as_str() {
+                "-g" | "--game-path" => {
+                    game_path = Some(PathBuf::from(
+                        args.next().expect("Missing value for --game-path"),
+                    ));
+                }
+                "-a" | "--archives-path" => {
+                    archives_path = Some(PathBuf::from(
+                        args.next().expect("Missing value for --archives-path"),
+                    ));
+                }
+                "-h" | "--help" => {
+                    println!("{}", USAGE);
+                    process::exit(0);
+                }
+                _ => {}
+            }
+        }
+
+        Self {
+            game_path,
+            archives_path,
+        }
+    }
 }
 
 fn main() {
@@ -60,7 +68,15 @@ fn main() {
         SevenZip::instance().map_err(|e| anyhow!(e))?;
         HPatchZ::instance().map_err(|e| anyhow!(e))?;
 
-        cli::run(&args)?;
+        // If args.game_path is None, default to env::current_dir()
+        let game_path = args
+            .game_path
+            .unwrap_or(env::current_dir().context("Failed to get the current directory")?);
+
+        // If args.archives_path is None, default to game_path
+        let archives_path = args.archives_path.as_deref().unwrap_or(game_path.as_path());
+
+        cli::run(&game_path, archives_path)?;
     };
 
     if let Err(e) = result {

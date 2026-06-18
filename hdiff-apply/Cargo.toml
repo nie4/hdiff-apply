@@ -5,7 +5,6 @@ edition = "2024"
 
 [dependencies]
 anyhow.workspace = true
-clap.workspace = true
 crossterm.workspace = true
 ruzstd.workspace = true
 prost.workspace = true

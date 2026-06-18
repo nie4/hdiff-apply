@@ -14,32 +14,22 @@ use indicatif::{ProgressBar, ProgressStyle};
 use tempfile::TempDir;
 use walkdir::WalkDir;
 
-use crate::{Args, patchers::PatchManager, update_package::UpdatePackage};
+use crate::{patchers::PatchManager, update_package::UpdatePackage};
 
-pub fn run(args: &Args) -> Result<()> {
-    if !args.game_path.exists() {
-        return Err(anyhow!("Game path doesn't exist"));
+pub fn run(game_path: &Path, archives_path: &Path) -> Result<()> {
+    if !game_path.exists() {
+        return Err(anyhow!(format!(
+            "'{}' is not a valid directory",
+            game_path.display()
+        )));
     }
 
     print_banner();
-
-    if args.legacy {
-        return run_legacy(args);
-    }
-
-    run_with_archives(args)
+    run_with_archives(game_path, archives_path)
 }
 
-fn run_legacy(args: &Args) -> Result<()> {
-    println!("Running in legacy mode");
-    run_patcher(&args.game_path, &args.game_path)?;
-    Ok(())
-}
-
-fn run_with_archives(args: &Args) -> Result<()> {
-    let archives_path = args.archives_path.as_ref().unwrap_or(&args.game_path);
-
-    let archives = UpdatePackage::find(&archives_path)?;
+fn run_with_archives(game_path: &Path, archives_path: &Path) -> Result<()> {
+    let archives = UpdatePackage::find(archives_path)?;
     if archives.is_empty() {
         bail!("Didn't find any archives - make sure you're in the correct directory.")
     }
@@ -60,8 +50,8 @@ fn run_with_archives(args: &Args) -> Result<()> {
         package.extract(&temp_extract.path().to_path_buf())?;
         println!("OK");
 
-        run_patcher(&args.game_path, temp_extract.path())?;
-        merge_into_game(temp_extract.path(), &args.game_path)?;
+        run_patcher(game_path, temp_extract.path())?;
+        merge_into_game(temp_extract.path(), game_path)?;
     }
 
     println!("-------------------------------");
