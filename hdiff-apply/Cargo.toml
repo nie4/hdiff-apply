@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 anyhow.workspace = true
 crossterm.workspace = true
-ruzstd.workspace = true
+zstd.workspace = true
 prost.workspace = true
 rayon.workspace = true
 tempfile.workspace = true
@@ -14,5 +14,5 @@ walkdir.workspace = true
 serde_json.workspace = true
 common.workspace = true
 seven-zip.workspace = true
-hpatchz.workspace = true
 indicatif.workspace = true
+hdiffpatch-rs.workspace = true

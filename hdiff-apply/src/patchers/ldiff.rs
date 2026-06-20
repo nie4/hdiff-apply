@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use std::fs;
-use std::io::{Seek, SeekFrom};
+use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 use std::{fs::File, path::PathBuf};
 
@@ -10,8 +10,6 @@ use common::types::DiffEntry;
 use indicatif::ProgressBar;
 use prost::Message;
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
-use ruzstd::decoding::StreamingDecoder;
-use ruzstd::io::Read;
 use walkdir::WalkDir;
 
 use crate::patchers::Patcher;
@@ -26,11 +24,14 @@ impl Ldiff {
     }
 
     fn load_manifest(manifest_path: &Path) -> Result<SophonPatchProto> {
-        let mut manifest_file =
+        let manifest_file =
             File::open(manifest_path).context("Failed to open ldiff manifest file")?;
-        let mut decoder = StreamingDecoder::new(&mut manifest_file)?;
+
+        let mut decoder = zstd::Decoder::new(manifest_file)?;
         let mut manifest_decompressed = Vec::new();
-        decoder.read_to_end(&mut manifest_decompressed)?;
+        decoder
+            .read_to_end(&mut manifest_decompressed)
+            .context("Failed to decompress ldiff manifest")?;
 
         SophonPatchProto::decode(manifest_decompressed.as_slice())
             .context("Failed to decode ldiff manifest proto")

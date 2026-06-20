@@ -5,7 +5,6 @@ use std::{
 
 use anyhow::{Context, Result, bail};
 use common::types::DiffEntry;
-use hpatchz::HPatchZ;
 use indicatif::ProgressBar;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use tempfile::TempDir;
@@ -57,13 +56,9 @@ pub trait Patcher {
                     fs::create_dir_all(parent)?;
                 }
 
-                HPatchZ::patch_file(&source_file, &patch_file, &staged).with_context(|| {
-                    format!(
-                        "Failed to patch: {} + {} -> {}",
-                        source_file.display(),
-                        patch_file.display(),
-                        staged.display()
-                    )
+                hdiffpatch_rs::patch_hdiff(&source_file, &patch_file, &staged).map_err(|e| {
+                    anyhow::anyhow!(e.to_string())
+                        .context(format!("Failed to patch '{}'", entry.target_file_name))
                 })?;
 
                 progress.inc(1);

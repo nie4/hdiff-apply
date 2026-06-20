@@ -8,7 +8,6 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow};
-use hpatchz::HPatchZ;
 use seven_zip::SevenZip;
 
 mod byte_convert;
@@ -66,7 +65,6 @@ fn main() {
     let result: Result<()> = try {
         // Throw any error early if they occur
         SevenZip::instance().map_err(|e| anyhow!(e))?;
-        HPatchZ::instance().map_err(|e| anyhow!(e))?;
 
         // If args.game_path is None, default to env::current_dir()
         let game_path = args
