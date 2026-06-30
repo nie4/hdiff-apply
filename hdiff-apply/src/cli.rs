@@ -5,7 +5,7 @@ use std::{
     path::Path,
 };
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Context, Result, bail};
 use crossterm::{
     ExecutableCommand, cursor,
     terminal::{self, ClearType},
@@ -16,46 +16,55 @@ use walkdir::WalkDir;
 
 use crate::{patchers::PatchManager, update_package::UpdatePackage};
 
+pub const RESET: &'static str = "\x1b[0m";
+pub const WHITE: &'static str = "\x1b[1;87m";
+pub const YELLOW: &'static str = "\x1b[33m";
+pub const RED: &'static str = "\x1b[1;31m";
+
+pub fn print_banner() {
+    println!(
+        "{} v{} : Made by nie\n",
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION")
+    );
+}
+
 pub fn run(game_path: &Path, archives_path: &Path) -> Result<()> {
     if !game_path.exists() {
-        return Err(anyhow!(format!(
-            "'{}' is not a valid directory",
-            game_path.display()
-        )));
+        bail!("'{}' is not a valid directory", game_path.display());
     }
-
-    print_banner();
     run_with_archives(game_path, archives_path)
 }
 
 fn run_with_archives(game_path: &Path, archives_path: &Path) -> Result<()> {
     let archives = UpdatePackage::find(archives_path)?;
     if archives.is_empty() {
-        bail!("Didn't find any archives - make sure you're in the correct directory.")
+        bail!("Didn't find any archives in '{}'", archives_path.display())
     }
 
-    let selected_archives = select_archives(archives)?;
-    let total_count = selected_archives.len();
+    let selected_indices = select_archives(&archives)?;
+    let total_count = selected_indices.len();
 
     println!("-------------------------------");
 
-    for (idx, package) in selected_archives.into_iter().enumerate() {
-        let current = idx + 1;
+    for (i, idx) in selected_indices.into_iter().enumerate() {
+        let current = i + 1;
+        let package = &archives[idx];
+
         println!("[{}/{}] Processing: {}", current, total_count, package.name);
 
         print!("  Extracting archive... ");
         io::stdout().flush()?;
 
         let temp_extract = TempDir::new()?;
-        package.extract(&temp_extract.path().to_path_buf())?;
+        package.extract(temp_extract.path())?;
         println!("OK");
 
         run_patcher(game_path, temp_extract.path())?;
         merge_into_game(temp_extract.path(), game_path)?;
     }
 
-    println!("-------------------------------");
-    println!("All {} updates completed successfully!", total_count);
+    println!("{WHITE}All {total_count} updates completed successfully!{RESET}");
 
     Ok(())
 }
@@ -67,7 +76,7 @@ fn merge_into_game(from: &Path, to: &Path) -> Result<()> {
 
         if rel
             .components()
-            .any(|c| is_patch_metadata(Path::new(c.as_os_str())))
+            .any(|c| is_patch_metadata(&c.as_os_str().to_string_lossy()))
         {
             continue;
         }
@@ -89,18 +98,11 @@ fn merge_into_game(from: &Path, to: &Path) -> Result<()> {
     Ok(())
 }
 
-fn is_patch_metadata(path: &Path) -> bool {
-    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-    if matches!(name, "hdifffiles.txt" | "hdiffmap.json" | "deletefiles.txt") {
-        return true;
-    }
-    if name.starts_with("manifest") {
-        return true;
-    }
-    if name == "ldiff" {
-        return true;
-    }
-    false
+fn is_patch_metadata(name: &str) -> bool {
+    matches!(
+        name,
+        "hdifffiles.txt" | "hdiffmap.json" | "deletefiles.txt" | "ldiff"
+    ) || name.starts_with("manifest")
 }
 
 fn run_patcher(game_path: &Path, patch_path: &Path) -> Result<()> {
@@ -113,102 +115,83 @@ fn run_patcher(game_path: &Path, patch_path: &Path) -> Result<()> {
             .progress_chars("##-"),
     );
 
-    if let Err(e) = patcher.patch(&patch_bar) {
-        patch_bar.finish_and_clear();
-        return Err(e.context("Patch failed - game files remain unchanged!"));
-    }
+    let result = patcher.patch(&patch_bar);
 
     patch_bar.finish_and_clear();
+
+    result.context("Patch failed - game files remain unchanged!")?;
+
     println!("  Patching complete using {}", patcher.patcher_name());
     println!();
 
     Ok(())
 }
 
-fn print_banner() {
-    println!(
-        "{} v{} | Made by nie\n-------------------------------",
-        env!("CARGO_PKG_NAME"),
-        env!("CARGO_PKG_VERSION")
-    );
-}
-
-fn select_archives(archives: Vec<UpdatePackage>) -> Result<Vec<UpdatePackage>> {
+fn select_archives(archives: &[UpdatePackage]) -> Result<Vec<usize>> {
     if archives.len() == 1 {
-        return select_single_archive(archives);
+        return Ok(vec![0]);
     }
 
-    println!("Found {} update packages:", archives.len());
+    println!("{WHITE}Found {} update packages{RESET}:", archives.len());
 
     let max_name_width = archives.iter().map(|a| a.name.len()).max().unwrap_or(0);
     for (i, archive) in archives.iter().enumerate() {
         println!(
-            "  {}. {:<width$} | {}",
+            "  [{}] {:<width$} ({})",
             i + 1,
             archive.name,
-            archive.size.display(),
+            archive.size,
             width = max_name_width
         );
     }
-    println!("");
+    println!();
 
+    let mut extra_lines = 0;
     loop {
-        println!("Enter the order in which to apply them (e.g. `1 2` or `2 1`)");
+        println!("{WHITE}Enter update order (e.g. `1 2`){RESET}");
+        print!("> ");
         let input = read_line()?;
-
         clear_lines(1)?;
 
-        let selected_archives = match parse_order(&input, &archives) {
+        let selected_indices = match parse_order(&input, &archives) {
             Ok(archives) => archives,
             Err(e) => {
-                clear_lines(1)?;
-                println!("\x1b[41m{}\x1b[m", e);
+                clear_lines(1 + extra_lines)?;
+                println!("{YELLOW}{}{RESET}", e);
+                extra_lines = 1;
                 continue;
             }
         };
 
-        println!("\nSelected order:");
-        for (i, archive) in selected_archives.iter().enumerate() {
-            println!("  {}. {}", i + 1, archive.name);
+        clear_lines(2 + extra_lines)?;
+        println!("\n{WHITE}Selected order{RESET}:");
+        for (i, idx) in selected_indices.iter().enumerate() {
+            println!("  {}. {}", i + 1, &archives[*idx].name);
         }
 
-        if confirm_order(&selected_archives)? {
-            return Ok(selected_archives);
+        println!();
+        if confirm_order()? {
+            return Ok(selected_indices);
         } else {
-            clear_lines(selected_archives.len() + 5)?;
+            clear_lines(selected_indices.len() + 3)?;
+            extra_lines = 0;
         }
     }
 }
 
-fn select_single_archive(archives: Vec<UpdatePackage>) -> Result<Vec<UpdatePackage>> {
-    println!("Update package found:");
-    println!("  Name: {}", archives[0].name);
-    println!("  Size: {}", archives[0].size.display());
+fn confirm_order() -> Result<bool> {
+    loop {
+        print!("{WHITE}Proceed [Y/n]{RESET} ");
 
-    print!("\nPress 'c' to confirm or 'q' to quit: ");
-    let input = read_line()?;
-
-    match input.trim().to_lowercase().as_str() {
-        s if s.contains('c') => Ok(archives),
-        _ => bail!("Operation cancelled"),
-    }
-}
-
-fn confirm_order(archives: &Vec<UpdatePackage>) -> Result<bool> {
-    print!("\nPress 'c' to confirm or 'e' to edit: ");
-    let input = read_line()?;
-
-    match input.trim().to_lowercase().as_str() {
-        "c" => Ok(true),
-        "e" => Ok(false),
-        _ => {
-            println!("Invalid input. Please enter 'c' or 'e'.");
-            confirm_order(archives)
+        match read_line()?.trim().to_ascii_lowercase().as_str() {
+            "" | "y" => return Ok(true),
+            "n" => return Ok(false),
+            _ => continue,
         }
     }
 }
 
-fn parse_order(input: &str, archives: &[UpdatePackage]) -> Result<Vec<UpdatePackage>> {
+fn parse_order(input: &str, archives: &[UpdatePackage]) -> Result<Vec<usize>> {
     let indices: Vec<usize> = input
         .trim()
         .split_whitespace()
@@ -239,7 +222,7 @@ fn parse_order(input: &str, archives: &[UpdatePackage]) -> Result<Vec<UpdatePack
                 archives.len()
             );
         }
-        selected.push(archives[idx - 1].clone());
+        selected.push(idx - 1);
     }
 
     Ok(selected)

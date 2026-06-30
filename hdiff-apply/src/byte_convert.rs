@@ -1,10 +1,20 @@
+use std::fmt::{self};
+
 #[derive(Debug, Clone)]
 pub struct ByteConvert(f64);
 
 impl ByteConvert {
     const UNITS: [&'static str; 6] = ["B", "KB", "MB", "GB", "TB", "PB"];
+}
 
-    pub fn display(&self) -> String {
+impl From<u64> for ByteConvert {
+    fn from(value: u64) -> Self {
+        ByteConvert(value as f64)
+    }
+}
+
+impl fmt::Display for ByteConvert {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut value = self.0;
         let mut unit_index = 0;
 
@@ -13,12 +23,6 @@ impl ByteConvert {
             unit_index += 1;
         }
 
-        format!("{:.2} {}", value, Self::UNITS[unit_index])
-    }
-}
-
-impl From<u64> for ByteConvert {
-    fn from(value: u64) -> Self {
-        ByteConvert(value as f64)
+        write!(f, "{:.2} {}", value, Self::UNITS[unit_index])
     }
 }

@@ -8,6 +8,7 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow};
+use cli::{RED, RESET};
 use seven_zip::SevenZip;
 
 mod byte_convert;
@@ -15,7 +16,14 @@ mod cli;
 mod patchers;
 mod update_package;
 
-const USAGE: &'static str = "No help for you";
+const USAGE: &'static str = r"Usage:
+    hdiff-apply.exe [options]
+
+Options:
+    -g, --game-path <DIR>       Game installation directory (default: current working directory)
+    -a, --archives-path <DIR>   Directory containing patch archives (default: --game-path)
+    -h, --help                  Show this help message
+";
 
 #[derive(Debug)]
 struct Args {
@@ -57,8 +65,11 @@ impl Args {
 }
 
 fn main() {
+    cli::print_banner();
+
     #[cfg(target_os = "windows")]
     crossterm::ansi_support::supports_ansi();
+
     let args = Args::parse();
     let should_pause = env::args().len() == 1;
 
@@ -78,7 +89,7 @@ fn main() {
     };
 
     if let Err(e) = result {
-        eprintln!("\x1b[41merror:\x1b[m {:?}", e);
+        eprintln!("{RED}error{RESET}: {:?}", e);
     }
 
     if should_pause {

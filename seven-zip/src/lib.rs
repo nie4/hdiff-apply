@@ -68,13 +68,10 @@ impl SevenZip {
             .map_err(|e| SevenZipError::Execute(format!("Command failed: {}", e)))
     }
 
-    pub fn extract<P: AsRef<Path>>(archive_path: P, output_dir: P) -> Result<()> {
-        let archive = archive_path.as_ref();
-        let output_dir = output_dir.as_ref();
-
-        if !archive.exists() {
+    pub fn extract(archive_path: &Path, output_dir: &Path) -> Result<()> {
+        if !archive_path.exists() {
             return Err(SevenZipError::ArchiveNotFound(
-                archive.display().to_string(),
+                archive_path.display().to_string(),
             ));
         }
 
@@ -82,7 +79,7 @@ impl SevenZip {
 
         let args = [
             "x",
-            &archive.display().to_string(),
+            &archive_path.display().to_string(),
             &format!("-o{}", &output_dir.display()),
             "-aoa",
             "-bsp0",
@@ -94,7 +91,7 @@ impl SevenZip {
             let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
 
             return Err(SevenZipError::ExtractionFailed {
-                archive: archive.display().to_string(),
+                archive: archive_path.display().to_string(),
                 exit_code: output.status.code().unwrap_or(-1),
                 message: stderr,
             });

@@ -8,7 +8,7 @@ use seven_zip::SevenZip;
 
 use crate::byte_convert::ByteConvert;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct UpdatePackage {
     pub name: String,
     pub path: PathBuf,
@@ -47,14 +47,8 @@ impl UpdatePackage {
         Ok(archives)
     }
 
-    pub fn extract(&self, game_path: &PathBuf) -> Result<()> {
+    pub fn extract(&self, game_path: &Path) -> Result<()> {
         SevenZip::extract(&self.path, &game_path)?;
         Ok(())
-    }
-}
-
-impl std::fmt::Display for UpdatePackage {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.name)
     }
 }
