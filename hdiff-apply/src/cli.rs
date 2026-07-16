@@ -1,6 +1,6 @@
 use std::{
     collections::HashSet,
-    fs,
+    fs::{self},
     io::{self, Write},
     path::Path,
 };
@@ -12,7 +12,6 @@ use crossterm::{
 };
 use indicatif::{ProgressBar, ProgressStyle};
 use tempfile::TempDir;
-use walkdir::WalkDir;
 
 use crate::{patchers::PatchManager, update_package::UpdatePackage};
 
@@ -20,6 +19,7 @@ pub const RESET: &'static str = "\x1b[0m";
 pub const WHITE: &'static str = "\x1b[1;87m";
 pub const YELLOW: &'static str = "\x1b[33m";
 pub const RED: &'static str = "\x1b[1;31m";
+pub const GREEN: &'static str = "\x1b[1;32m";
 
 pub fn print_banner() {
     println!(
@@ -30,13 +30,14 @@ pub fn print_banner() {
 }
 
 pub fn run(game_path: &Path, archives_path: &Path) -> Result<()> {
-    if !game_path.exists() {
+    if !game_path.exists()
+        || !archives_path.exists()
+        || !game_path.is_dir()
+        || !archives_path.is_dir()
+    {
         bail!("'{}' is not a valid directory", game_path.display());
     }
-    run_with_archives(game_path, archives_path)
-}
 
-fn run_with_archives(game_path: &Path, archives_path: &Path) -> Result<()> {
     let archives = UpdatePackage::find(archives_path)?;
     if archives.is_empty() {
         bail!("Didn't find any archives in '{}'", archives_path.display())
@@ -58,7 +59,7 @@ fn run_with_archives(game_path: &Path, archives_path: &Path) -> Result<()> {
 
         let temp_extract = TempDir::new()?;
         package.extract(temp_extract.path())?;
-        println!("OK");
+        println!("{GREEN}OK{RESET}");
 
         run_patcher(game_path, temp_extract.path())?;
         merge_into_game(temp_extract.path(), game_path)?;
@@ -70,39 +71,33 @@ fn run_with_archives(game_path: &Path, archives_path: &Path) -> Result<()> {
 }
 
 fn merge_into_game(from: &Path, to: &Path) -> Result<()> {
-    for entry in WalkDir::new(from) {
-        let entry = entry?;
-        let rel = entry.path().strip_prefix(from)?;
+    fn is_patch_metadata(name: &str) -> bool {
+        matches!(
+            name,
+            "hdifffiles.txt" | "hdiffmap.json" | "deletefiles.txt" | "ldiff"
+        ) || name.starts_with("manifest")
+    }
 
-        if rel
-            .components()
-            .any(|c| is_patch_metadata(&c.as_os_str().to_string_lossy()))
-        {
+    for entry in fs::read_dir(from)? {
+        let entry = entry?;
+        let name = entry.file_name();
+
+        if is_patch_metadata(&name.to_string_lossy()) {
             continue;
         }
 
-        let target = to.join(rel);
+        let src = entry.path();
+        let dst = to.join(&name);
 
-        if entry.file_type().is_dir() {
-            fs::create_dir_all(&target)?;
+        if entry.file_type()?.is_dir() {
+            fs::create_dir_all(&dst)?;
+            merge_into_game(&src, &dst)?;
         } else {
-            if let Some(parent) = target.parent() {
-                fs::create_dir_all(parent)?;
-            }
-
-            fs::rename(entry.path(), &target)
-                .or_else(|_| fs::copy(entry.path(), &target).map(|_| ()))?;
+            fs::rename(&src, &dst)?;
         }
     }
 
     Ok(())
-}
-
-fn is_patch_metadata(name: &str) -> bool {
-    matches!(
-        name,
-        "hdifffiles.txt" | "hdiffmap.json" | "deletefiles.txt" | "ldiff"
-    ) || name.starts_with("manifest")
 }
 
 fn run_patcher(game_path: &Path, patch_path: &Path) -> Result<()> {

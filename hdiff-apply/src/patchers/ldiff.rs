@@ -10,7 +10,6 @@ use common::types::DiffEntry;
 use indicatif::ProgressBar;
 use prost::Message;
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
-use walkdir::WalkDir;
 
 use crate::patchers::Patcher;
 
@@ -140,13 +139,11 @@ impl Ldiff {
         if !data_path.exists() {
             return Ok(());
         }
-        let files_to_delete: Vec<_> = WalkDir::new(&data_path)
-            .into_iter()
-            .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().is_file())
-            .filter(|e| !e.path().components().any(|c| c.as_os_str() == "Persistent"))
-            .map(|e| e.path().to_path_buf())
-            .collect::<Vec<_>>()
+
+        let mut all_files = Vec::new();
+        Self::collect_files_skip_dir(&data_path, "Persistent", &mut all_files)?;
+
+        let files_to_delete: Vec<_> = all_files
             .into_par_iter()
             .filter(|path| {
                 path.strip_prefix(game_path)
@@ -156,6 +153,23 @@ impl Ldiff {
             .collect();
 
         files_to_delete.into_iter().try_for_each(fs::remove_file)?;
+
+        Ok(())
+    }
+
+    fn collect_files_skip_dir(dir: &Path, skip_name: &str, out: &mut Vec<PathBuf>) -> Result<()> {
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if entry.file_type()?.is_dir() {
+                if entry.file_name() == skip_name {
+                    continue;
+                }
+                Self::collect_files_skip_dir(&path, skip_name, out)?;
+            } else {
+                out.push(path);
+            }
+        }
 
         Ok(())
     }
@@ -173,9 +187,6 @@ impl Patcher for Ldiff {
 
         let diff_entries =
             Self::create_diff_entries(&manifest).context("Failed to create diff entries")?;
-
-        progress.set_length(diff_entries.len() as u64);
-        progress.set_message("Patching files");
 
         match self.patch_files(game_path, patch_path, &diff_entries, progress) {
             Ok(_) => {
