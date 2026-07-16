@@ -1,4 +1,7 @@
 # hdiff-apply
+User-friendly updater/patcher for gacha games that doesn't punish you
+
+![Screencast](assets/Screencast.gif)
 
 ## Features
 - Support for HDiff and LDiff
@@ -14,13 +17,12 @@
 
 ## CLI usage
 ```
-Usage: hdiff-apply.exe [OPTIONS]
+Usage: hdiff-apply.exe [options]
 
 Options:
-  -g, --game-path <PATH>      Game installation directory [default: .]
-  -a, --archives-path <PATH>  Directory containing patch archives (defaults to game_path)
-  -h, --help                  Print help
-  -V, --version               Print version
+  -g, --game-path <DIR>       Game installation directory (default: current working directory)
+  -a, --archives-path <DIR>   Directory containing patch archives (default: --game-path)
+  -h, --help                  Show this help message
 
 EXAMPLES:
   # Apply patches from current directory
@@ -46,10 +48,9 @@ cargo build --release
 ```
 
 ## Credits
-- [HDiffPatch](https://github.com/sisong/HDiffPatch) for the patching utility (`hpatchz/bin/hpatchz.exe`)
-- [7-Zip](https://7-zip.org/) for file archive utility (`seven-zip/bin/7z.exe`)
-- [SophonPatcher](https://github.com/WatchAndyTW/SophonPatcher/) for original ldiff manifest proto
-- [Hi3Helper.Sophon](https://github.com/CollapseLauncher/Hi3Helper.Sophon) for updated sophon proto
+- [7-Zip](https://7-zip.org/) for file archive utility (`seven-zip/bin/*`)
+- [CollapseLauncher/Hi3Helper.Sophon](https://github.com/CollapseLauncher/Hi3Helper.Sophon) for updated sophon proto
+- [TwintailTeam/hdiffpatch-rs](https://github.com/TwintailTeam/hdiffpatch-rs) for a rust based patcher
 
 ## Issues & Contributions
 Found a bug or want to contribute? Please open an issue or pull request on [GitHub](https://github.com/nie4/hdiff-apply).
