@@ -1,6 +1,7 @@
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug, Default)]
+#[allow(unused)]
 pub struct DiffEntry {
     pub source_file_name: String,
     pub source_file_md5: String,

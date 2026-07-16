@@ -1,8 +1,10 @@
 use std::{
     collections::HashSet,
+    env,
     fs::{self},
     io::{self, Write},
-    path::Path,
+    ops::Deref,
+    path::{Path, PathBuf},
 };
 
 use anyhow::{Context, Result, bail};
@@ -11,7 +13,6 @@ use crossterm::{
     terminal::{self, ClearType},
 };
 use indicatif::{ProgressBar, ProgressStyle};
-use tempfile::TempDir;
 
 use crate::{patchers::PatchManager, update_package::UpdatePackage};
 
@@ -57,12 +58,12 @@ pub fn run(game_path: &Path, archives_path: &Path) -> Result<()> {
         print!("  Extracting archive... ");
         io::stdout().flush()?;
 
-        let temp_extract = TempDir::new()?;
-        package.extract(temp_extract.path())?;
+        let temp_extract = HaTemp::new(game_path.join(".ha-extracted"))?;
+        package.extract(&temp_extract)?;
         println!("{GREEN}OK{RESET}");
 
-        run_patcher(game_path, temp_extract.path())?;
-        merge_into_game(temp_extract.path(), game_path)?;
+        run_patcher(game_path, &temp_extract)?;
+        merge_into_game(&temp_extract, game_path)?;
     }
 
     println!("{WHITE}All {total_count} updates completed successfully!{RESET}");
@@ -237,4 +238,26 @@ fn read_line() -> Result<String> {
     let mut input = String::new();
     io::stdin().read_line(&mut input)?;
     Ok(input)
+}
+
+pub struct HaTemp(PathBuf);
+
+impl HaTemp {
+    pub fn new(path: PathBuf) -> Result<Self> {
+        fs::create_dir_all(&path)?;
+        Ok(Self(path))
+    }
+}
+
+impl Drop for HaTemp {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+impl Deref for HaTemp {
+    type Target = Path;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }

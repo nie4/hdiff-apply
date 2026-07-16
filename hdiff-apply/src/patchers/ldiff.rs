@@ -5,13 +5,13 @@ use std::path::Path;
 use std::{fs::File, path::PathBuf};
 
 use anyhow::{Context, Result};
-use common::sophon_proto::{SophonPatchAssetChunk, SophonPatchAssetProperty, SophonPatchProto};
-use common::types::DiffEntry;
 use indicatif::ProgressBar;
 use prost::Message;
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
 use crate::patchers::Patcher;
+use crate::sophon_proto::{SophonPatchAssetChunk, SophonPatchAssetProperty, SophonPatchProto};
+use crate::types::DiffEntry;
 
 pub struct Ldiff {
     manifest_path: PathBuf,

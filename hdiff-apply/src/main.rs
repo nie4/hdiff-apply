@@ -8,12 +8,14 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow};
-use cli::{RED, RESET};
+use app::{RED, RESET};
 use seven_zip::SevenZip;
 
+mod app;
 mod byte_convert;
-mod cli;
 mod patchers;
+mod sophon_proto;
+mod types;
 mod update_package;
 
 const USAGE: &'static str = r"Usage:
@@ -65,7 +67,7 @@ impl Args {
 }
 
 fn main() {
-    cli::print_banner();
+    app::print_banner();
 
     #[cfg(target_os = "windows")]
     crossterm::ansi_support::supports_ansi();
@@ -85,7 +87,7 @@ fn main() {
         // If args.archives_path is None, default to game_path
         let archives_path = args.archives_path.as_deref().unwrap_or(game_path.as_path());
 
-        cli::run(&game_path, archives_path)?;
+        app::run(&game_path, archives_path)?;
     };
 
     if let Err(e) = result {

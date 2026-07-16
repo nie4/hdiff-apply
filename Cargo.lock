@@ -45,15 +45,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
-name = "common"
-version = "1.0.0"
-dependencies = [
- "anyhow",
- "prost",
- "serde",
-]
-
-[[package]]
 name = "console"
 version = "0.16.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -179,12 +170,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fastrand"
-version = "2.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
-
-[[package]]
 name = "find-msvc-tools"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -231,15 +216,14 @@ name = "hdiff-apply"
 version = "2.0.0"
 dependencies = [
  "anyhow",
- "common",
  "crossterm",
  "hdiffpatch-rs",
  "indicatif",
  "prost",
  "rayon",
+ "serde",
  "serde_json",
  "seven-zip",
- "tempfile",
  "zstd",
 ]
 
@@ -547,7 +531,6 @@ name = "seven-zip"
 version = "1.0.0"
 dependencies = [
  "anyhow",
- "common",
  "thiserror",
 ]
 
@@ -608,19 +591,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
-]
-
-[[package]]
-name = "tempfile"
-version = "3.24.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "655da9c7eb6305c55742045d5a8d2037996d61d8de95806335c7c86ce0f82e9c"
-dependencies = [
- "fastrand",
- "getrandom",
- "once_cell",
- "rustix",
- "windows-sys",
 ]
 
 [[package]]

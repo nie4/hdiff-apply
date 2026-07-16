@@ -5,10 +5,12 @@ use std::{
 };
 
 use anyhow::{Context, Result, bail};
-use common::types::{CustomDiffMap, DiffEntry, HDiffMap};
 use indicatif::ProgressBar;
 
-use crate::patchers::Patcher;
+use crate::{
+    patchers::Patcher,
+    types::{CustomDiffMap, DiffEntry, HDiffMap},
+};
 
 #[derive(Clone, Copy)]
 enum HdiffFormat {

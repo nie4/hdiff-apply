@@ -1,12 +1,15 @@
 #![feature(once_cell_try)] // Stable when
 
 use std::{
+    env,
     ffi::OsStr,
     fs,
     path::{Path, PathBuf},
     process::{Command, Output},
     sync::OnceLock,
 };
+
+use anyhow::Context;
 
 use crate::error::{Result, SevenZipError};
 
@@ -22,7 +25,8 @@ impl SevenZip {
     }
 
     fn new() -> Result<Self> {
-        let temp_dir = common::path::get_temp_dir()?;
+        let temp_dir = env::temp_dir().join("hdiff-apply");
+        fs::create_dir_all(&temp_dir).context("Failed to create temp directory")?;
 
         #[cfg(target_os = "linux")]
         {

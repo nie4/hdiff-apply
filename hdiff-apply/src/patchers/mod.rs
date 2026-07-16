@@ -4,12 +4,14 @@ use std::{
 };
 
 use anyhow::{Context, Result, bail};
-use common::types::DiffEntry;
 use indicatif::ProgressBar;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use tempfile::TempDir;
 
-use crate::patchers::{hdiff::Hdiff, ldiff::Ldiff};
+use crate::{
+    app::HaTemp,
+    patchers::{hdiff::Hdiff, ldiff::Ldiff},
+    types::DiffEntry,
+};
 
 mod hdiff;
 mod ldiff;
@@ -25,8 +27,7 @@ pub trait Patcher {
         diff_entries: &[DiffEntry],
         progress: &ProgressBar,
     ) -> Result<()> {
-        let staging_dir =
-            TempDir::new_in(game_path).context("Failed to create staging directory")?;
+        let staging_dir = HaTemp::new(game_path.join(".ha-staging"))?;
 
         progress.set_message("Patching files");
         progress.set_length(diff_entries.len() as _);
@@ -50,7 +51,7 @@ pub trait Patcher {
                     ));
                 }
 
-                let staged = staging_dir.path().join(&entry.target_file_name);
+                let staged = &staging_dir.join(&entry.target_file_name);
 
                 if let Some(parent) = staged.parent() {
                     fs::create_dir_all(parent)?;
@@ -73,7 +74,7 @@ pub trait Patcher {
         diff_entries
             .par_iter()
             .try_for_each(|entry| -> Result<()> {
-                let staged_file = staging_dir.path().join(&entry.target_file_name);
+                let staged_file = staging_dir.join(&entry.target_file_name);
                 let target_file = game_path.join(&entry.target_file_name);
 
                 fs::rename(&staged_file, &target_file)
