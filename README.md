@@ -1,7 +1,9 @@
 # hdiff-apply
 User-friendly updater/patcher for gacha games that doesn't punish you
 
-![Screencast](assets/Screencast.gif)
+<p align="center">
+    <img src="assets/Screencast.gif" alt="Screencast"/>
+</p>
 
 ## Features
 - Support for HDiff and LDiff
