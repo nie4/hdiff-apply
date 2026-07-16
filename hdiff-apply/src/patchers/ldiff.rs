@@ -4,7 +4,7 @@ use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 use std::{fs::File, path::PathBuf};
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result};
 use common::sophon_proto::{SophonPatchAssetChunk, SophonPatchAssetProperty, SophonPatchProto};
 use common::types::DiffEntry;
 use indicatif::ProgressBar;
@@ -180,15 +180,13 @@ impl Patcher for Ldiff {
         match self.patch_files(game_path, patch_path, &diff_entries, progress) {
             Ok(_) => {
                 Self::cleanup_generated_hdiff(patch_path, &diff_entries);
-                Self::cleanup_old_files(game_path, &diff_entries, &manifest)?;
+                Self::cleanup_old_files(game_path, &diff_entries, &manifest)
             }
             Err(e) => {
                 Self::cleanup_generated_hdiff(patch_path, &diff_entries);
-                return Err(anyhow!("{e}"));
+                Err(e)
             }
         }
-
-        Ok(())
     }
 
     fn name(&self) -> &'static str {

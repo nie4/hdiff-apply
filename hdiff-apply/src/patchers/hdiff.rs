@@ -59,7 +59,7 @@ impl Hdiff {
         }
     }
 
-    fn cleanup(&self, patch_path: &Path, diff_entries: &[DiffEntry]) {
+    fn cleanup(patch_path: &Path, diff_entries: &[DiffEntry]) {
         for entry in diff_entries {
             let _ = fs::remove_file(patch_path.join(&entry.patch_file_name));
         }
@@ -95,17 +95,14 @@ impl Patcher for Hdiff {
         let format = Self::detect_format(patch_path)?;
         let diff_entries = Self::load_diff_entries(patch_path, format)?;
 
-        progress.set_length(diff_entries.len() as u64);
-        progress.set_message("Patching files");
-
         match self.patch_files(game_path, patch_path, &diff_entries, progress) {
             Ok(_) => {
                 Self::apply_delete_list(game_path, patch_path)?;
-                self.cleanup(patch_path, &diff_entries);
+                Self::cleanup(patch_path, &diff_entries);
                 Ok(())
             }
             Err(e) => {
-                self.cleanup(patch_path, &diff_entries);
+                Self::cleanup(patch_path, &diff_entries);
                 Err(e)
             }
         }
