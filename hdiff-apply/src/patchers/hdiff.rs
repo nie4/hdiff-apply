@@ -6,8 +6,10 @@ use std::{
 
 use anyhow::{Context, Result, bail};
 use indicatif::ProgressBar;
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::{
+    app::HaTemp,
     patchers::Patcher,
     types::{CustomDiffMap, DiffEntry, HDiffMap},
 };
@@ -93,6 +95,10 @@ impl Hdiff {
 }
 
 impl Patcher for Hdiff {
+    fn name(&self) -> &'static str {
+        "hdiff"
+    }
+
     fn start(&self, game_path: &Path, patch_path: &Path, progress: &ProgressBar) -> Result<()> {
         let format = Self::detect_format(patch_path)?;
         let diff_entries = Self::load_diff_entries(patch_path, format)?;
@@ -110,7 +116,47 @@ impl Patcher for Hdiff {
         }
     }
 
-    fn name(&self) -> &'static str {
-        "hdiff"
+    fn patch_files(
+        &self,
+        game_path: &Path,
+        patch_path: &Path,
+        diff_entries: &[DiffEntry],
+        progress: &ProgressBar,
+    ) -> Result<()> {
+        let staging_dir = HaTemp::new(game_path.join(".ha-staging"))?;
+
+        progress.set_message("Patching files");
+        progress.set_length(diff_entries.len() as _);
+        progress.set_position(0);
+
+        diff_entries
+            .par_iter()
+            .try_for_each(|entry| -> Result<()> {
+                let source_file = game_path.join(&entry.source_file_name);
+                if !source_file.exists() {
+                    anyhow::bail!("Missing source file: {}", source_file.display());
+                }
+
+                let patch_file = patch_path.join(&entry.patch_file_name);
+                if !patch_file.exists() {
+                    anyhow::bail!("Missing patch file: {}", patch_file.display());
+                }
+
+                let staged = staging_dir.join(&entry.target_file_name);
+                if let Some(parent) = staged.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+
+                hdiffpatch_rs::patch_hdiff(&source_file, &patch_file, &staged).map_err(|e| {
+                    anyhow::anyhow!(e.to_string())
+                        .context(format!("Failed to patch '{}'", entry.target_file_name))
+                })?;
+
+                progress.inc(1);
+
+                Ok(())
+            })?;
+
+        self.commit_files(diff_entries, progress, game_path, staging_dir)
     }
 }

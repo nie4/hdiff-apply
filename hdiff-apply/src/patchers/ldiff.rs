@@ -9,6 +9,7 @@ use indicatif::ProgressBar;
 use prost::Message;
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
+use crate::app::HaTemp;
 use crate::patchers::Patcher;
 use crate::sophon_proto::{SophonPatchAssetChunk, SophonPatchAssetProperty, SophonPatchProto};
 use crate::types::DiffEntry;
@@ -176,6 +177,10 @@ impl Ldiff {
 }
 
 impl Patcher for Ldiff {
+    fn name(&self) -> &'static str {
+        "ldiff"
+    }
+
     fn start(&self, game_path: &Path, patch_path: &Path, progress: &ProgressBar) -> Result<()> {
         progress.unset_length();
         progress.set_message("Reading manifest");
@@ -200,7 +205,86 @@ impl Patcher for Ldiff {
         }
     }
 
-    fn name(&self) -> &'static str {
-        "ldiff"
+    fn patch_files(
+        &self,
+        game_path: &Path,
+        patch_path: &Path,
+        diff_entries: &[DiffEntry],
+        progress: &ProgressBar,
+    ) -> Result<()> {
+        let staging_dir = HaTemp::new(game_path.join(".ha-staging"))?;
+
+        progress.set_message("Patching files");
+        progress.set_length(diff_entries.len() as _);
+        progress.set_position(0);
+
+        // A hack for ldiffs since i wanna be sure "normal" diffs patch correctly before creating dummy files in the game folder
+        let (empty_source, normal): (Vec<&DiffEntry>, Vec<&DiffEntry>) = diff_entries
+            .iter()
+            .partition(|entry| entry.source_file_name.is_empty());
+
+        normal.par_iter().try_for_each(|entry| -> Result<()> {
+            let source_file = game_path.join(&entry.source_file_name);
+            if !source_file.exists() {
+                anyhow::bail!("Missing source file: {}", source_file.display());
+            }
+
+            let patch_file = patch_path.join(&entry.patch_file_name);
+            if !patch_file.exists() {
+                anyhow::bail!("Missing patch file: {}", patch_file.display());
+            }
+
+            let staged = staging_dir.join(&entry.target_file_name);
+            if let Some(parent) = staged.parent() {
+                fs::create_dir_all(parent)?;
+            }
+
+            hdiffpatch_rs::patch_hdiff(&source_file, &patch_file, &staged).map_err(|e| {
+                anyhow::anyhow!(e.to_string())
+                    .context(format!("Failed to patch '{}'", entry.target_file_name))
+            })?;
+
+            progress.inc(1);
+            Ok(())
+        })?;
+
+        empty_source
+            .par_iter()
+            .try_for_each(|entry| -> Result<()> {
+                let source_file = game_path.join(&entry.target_file_name);
+                let parent = source_file.parent().ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "entry.target_file_name has no parent: {}",
+                        source_file.display()
+                    )
+                })?;
+                fs::create_dir_all(parent)?;
+                File::create(&source_file).with_context(|| {
+                    format!(
+                        "Failed to create dummy source file: {}",
+                        source_file.display()
+                    )
+                })?;
+
+                let patch_file = patch_path.join(&entry.patch_file_name);
+                if !patch_file.exists() {
+                    anyhow::bail!("Missing patch file: {}", patch_file.display());
+                }
+
+                let staged = staging_dir.join(&entry.target_file_name);
+                if let Some(parent) = staged.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+
+                hdiffpatch_rs::patch_hdiff(&source_file, &patch_file, &staged).map_err(|e| {
+                    anyhow::anyhow!(e.to_string())
+                        .context(format!("Failed to patch '{}'", entry.target_file_name))
+                })?;
+
+                progress.inc(1);
+                Ok(())
+            })?;
+
+        self.commit_files(diff_entries, progress, game_path, staging_dir)
     }
 }
