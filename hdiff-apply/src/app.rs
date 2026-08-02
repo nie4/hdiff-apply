@@ -244,6 +244,9 @@ pub struct HaTemp(PathBuf);
 
 impl HaTemp {
     pub fn new(path: PathBuf) -> Result<Self> {
+        if path.exists() {
+            fs::remove_dir_all(&path)?;
+        }
         fs::create_dir_all(&path)?;
         Ok(Self(path))
     }

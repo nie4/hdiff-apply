@@ -10,7 +10,7 @@ use prost::Message;
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
 use crate::app::HaTemp;
-use crate::patchers::Patcher;
+use crate::patchers::{self, Patcher};
 use crate::sophon_proto::{SophonPatchAssetChunk, SophonPatchAssetProperty, SophonPatchProto};
 use crate::types::DiffEntry;
 
@@ -56,7 +56,7 @@ impl Ldiff {
         }
     }
 
-    fn create_diff_entries(manifest: &SophonPatchProto) -> Result<Vec<DiffEntry>> {
+    fn create_hdiff_map(manifest: &SophonPatchProto) -> Result<Vec<DiffEntry>> {
         Self::asset_pairs(manifest)
             .map(|(asset_prop, chunk)| {
                 Ok(DiffEntry {
@@ -174,39 +174,8 @@ impl Ldiff {
 
         Ok(())
     }
-}
-
-impl Patcher for Ldiff {
-    fn name(&self) -> &'static str {
-        "ldiff"
-    }
-
-    fn start(&self, game_path: &Path, patch_path: &Path, progress: &ProgressBar) -> Result<()> {
-        progress.unset_length();
-        progress.set_message("Reading manifest");
-        let manifest = Self::load_manifest(&self.manifest_path)?;
-
-        progress.set_message("Extracting files");
-        Self::extract_hdiff_files(&manifest, patch_path)
-            .context("Failed to extract hdiff files from ldiff")?;
-
-        let diff_entries =
-            Self::create_diff_entries(&manifest).context("Failed to create diff entries")?;
-
-        match self.patch_files(game_path, patch_path, &diff_entries, progress) {
-            Ok(_) => {
-                Self::cleanup_generated_hdiff(patch_path, &diff_entries);
-                Self::cleanup_old_files(game_path, &diff_entries, &manifest)
-            }
-            Err(e) => {
-                Self::cleanup_generated_hdiff(patch_path, &diff_entries);
-                Err(e)
-            }
-        }
-    }
 
     fn patch_files(
-        &self,
         game_path: &Path,
         patch_path: &Path,
         diff_entries: &[DiffEntry],
@@ -285,6 +254,36 @@ impl Patcher for Ldiff {
                 Ok(())
             })?;
 
-        self.commit_files(diff_entries, progress, game_path, staging_dir)
+        patchers::commit_files(diff_entries, progress, game_path, staging_dir)
+    }
+}
+
+impl Patcher for Ldiff {
+    fn name(&self) -> &'static str {
+        "ldiff"
+    }
+
+    fn start(&self, game_path: &Path, patch_path: &Path, progress: &ProgressBar) -> Result<()> {
+        progress.unset_length();
+        progress.set_message("Reading manifest");
+        let manifest = Self::load_manifest(&self.manifest_path)?;
+
+        progress.set_message("Extracting files");
+        Self::extract_hdiff_files(&manifest, patch_path)
+            .context("Failed to extract hdiff files from ldiff")?;
+
+        let diff_entries =
+            Self::create_hdiff_map(&manifest).context("Failed to create diff entries")?;
+
+        match Self::patch_files(game_path, patch_path, &diff_entries, progress) {
+            Ok(_) => {
+                Self::cleanup_generated_hdiff(patch_path, &diff_entries);
+                Self::cleanup_old_files(game_path, &diff_entries, &manifest)
+            }
+            Err(e) => {
+                Self::cleanup_generated_hdiff(patch_path, &diff_entries);
+                Err(e)
+            }
+        }
     }
 }

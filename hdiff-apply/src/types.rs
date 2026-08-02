@@ -1,5 +1,10 @@
 use serde::Deserialize;
 
+#[derive(Deserialize, Debug)]
+pub struct HDiffMap {
+    pub diff_map: Vec<DiffEntry>,
+}
+
 #[derive(Deserialize, Debug, Default)]
 #[allow(unused)]
 pub struct DiffEntry {
@@ -17,12 +22,7 @@ pub struct DiffEntry {
 }
 
 #[derive(Deserialize, Debug)]
-pub struct HDiffMap {
-    pub diff_map: Vec<DiffEntry>,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct CustomDiffMap {
+pub struct HDiffFiles {
     #[serde(rename = "remoteName")]
     pub remote_name: String,
 }
