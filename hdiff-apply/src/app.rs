@@ -41,6 +41,20 @@ pub fn run(game_path: &Path, archives_path: &Path) -> Result<()> {
 
     let archives = UpdatePackage::find(archives_path)?;
     if archives.is_empty() {
+        if fs::read_dir(archives_path)?
+            .filter_map(Result::ok)
+            .any(|entry| {
+                entry
+                    .file_name()
+                    .to_str()
+                    .map(is_patch_metadata)
+                    .unwrap_or(false)
+            })
+        {
+            println!("Running legacy patcher");
+            run_patcher(&game_path, &archives_path)?
+        }
+
         bail!("Didn't find any archives in '{}'", archives_path.display())
     }
 
@@ -71,14 +85,14 @@ pub fn run(game_path: &Path, archives_path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn merge_into_game(from: &Path, to: &Path) -> Result<()> {
-    fn is_patch_metadata(name: &str) -> bool {
-        matches!(
-            name,
-            "hdifffiles.txt" | "hdiffmap.json" | "deletefiles.txt" | "ldiff"
-        ) || name.starts_with("manifest")
-    }
+fn is_patch_metadata(name: &str) -> bool {
+    matches!(
+        name,
+        "hdifffiles.txt" | "hdiffmap.json" | "deletefiles.txt" | "ldiff"
+    ) || name.starts_with("manifest")
+}
 
+fn merge_into_game(from: &Path, to: &Path) -> Result<()> {
     for entry in fs::read_dir(from)? {
         let entry = entry?;
         let name = entry.file_name();
